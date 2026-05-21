@@ -1,21 +1,38 @@
-## 문제 상황
+---
+name: Bug report
+about: Create a report to help us improve
+title: ''
+labels: ''
+assignees: ''
 
-어떤 문제가 발생했는지 작성합니다.
+---
 
-## 재현 방법
+**Describe the bug**
+A clear and concise description of what the bug is.
 
-1.
-2.
-3.
+**To Reproduce**
+Steps to reproduce the behavior:
+1. Go to '...'
+2. Click on '....'
+3. Scroll down to '....'
+4. See error
 
-## 기대 동작
+**Expected behavior**
+A clear and concise description of what you expected to happen.
 
-정상적으로 기대한 동작을 작성합니다.
+**Screenshots**
+If applicable, add screenshots to help explain your problem.
 
-## 원인 후보
+**Desktop (please complete the following information):**
+ - OS: [e.g. iOS]
+ - Browser [e.g. chrome, safari]
+ - Version [e.g. 22]
 
-의심되는 원인을 작성합니다.
+**Smartphone (please complete the following information):**
+ - Device: [e.g. iPhone6]
+ - OS: [e.g. iOS8.1]
+ - Browser [e.g. stock browser, safari]
+ - Version [e.g. 22]
 
-## 해결 방향
-
-어떻게 수정할지 작성합니다.
+**Additional context**
+Add any other context about the problem here.
