@@ -1,0 +1,13 @@
+package com.monit.pingbell;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@SpringBootApplication
+public class PingbellApplication {
+
+    public static void main(String[] args) {
+        SpringApplication.run(PingbellApplication.class, args);
+    }
+
+}
