@@ -1,20 +1,20 @@
----
-name: Feature request
-about: Suggest an idea for this project
-title: ''
-labels: ''
-assignees: ''
+## 작업 목적
 
----
+이 기능을 구현하는 이유를 작성합니다.
 
-**Is your feature request related to a problem? Please describe.**
-A clear and concise description of what the problem is. Ex. I'm always frustrated when [...]
+## 작업 내용
 
-**Describe the solution you'd like**
-A clear and concise description of what you want to happen.
+- [ ] 구현할 기능 1
+- [ ] 구현할 기능 2
+- [ ] 구현할 기능 3
 
-**Describe alternatives you've considered**
-A clear and concise description of any alternative solutions or features you've considered.
+## 완료 조건
 
-**Additional context**
-Add any other context or screenshots about the feature request here.
+- [ ] API가 정상 동작한다
+- [ ] 예외 케이스가 처리된다
+- [ ] 테스트가 통과한다
+- [ ] 필요한 문서가 업데이트된다
+
+## 참고 사항
+
+관련 설계, API, DB 테이블, 고민한 점 등을 작성합니다.
