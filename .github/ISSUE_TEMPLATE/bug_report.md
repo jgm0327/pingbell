@@ -1,3 +1,11 @@
+---
+name: Bug Report
+about: 버그 발생 내용을 기록합니다.
+title: "[Bug] "
+labels: bug
+assignees: ''
+---
+
 ## 문제 상황
 
 어떤 문제가 발생했는지 작성합니다.
