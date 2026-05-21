@@ -1,3 +1,11 @@
+---
+name: Feature Request
+about: 새로운 기능 개발 요청을 기록합니다.
+title: "[Feature] "
+labels: enhancement
+assignees: ''
+---
+
 ## 작업 목적
 
 이 기능을 구현하는 이유를 작성합니다.
