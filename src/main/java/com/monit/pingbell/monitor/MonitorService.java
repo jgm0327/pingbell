@@ -2,6 +2,7 @@ package com.monit.pingbell.monitor;
 
 import com.monit.pingbell.monitor.dto.MonitorRegisterRequest;
 import com.monit.pingbell.monitor.dto.MonitorRegisterResponse;
+import com.monit.pingbell.monitor.dto.MonitorResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -11,6 +12,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.net.URI;
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Service
 public class MonitorService {
@@ -40,6 +42,23 @@ public class MonitorService {
 
         Monitor saved = monitorRepository.save(monitor);
         return MonitorRegisterResponse.from(saved);
+    }
+
+    @Transactional(readOnly = true)
+    public List<MonitorResponse> getMonitors() {
+        Long memberId = resolveAuthenticatedMemberId();
+        return monitorRepository.findAllByUserIdOrderByIdDesc(memberId)
+                .stream()
+                .map(MonitorResponse::from)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public MonitorResponse getMonitor(Long monitorId) {
+        Long memberId = resolveAuthenticatedMemberId();
+        Monitor monitor = monitorRepository.findByIdAndUserId(monitorId, memberId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Monitor not found."));
+        return MonitorResponse.from(monitor);
     }
 
     private Long resolveAuthenticatedMemberId() {
