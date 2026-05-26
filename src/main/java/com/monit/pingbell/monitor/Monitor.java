@@ -48,6 +48,8 @@ public class Monitor extends BaseTimeEntity {
     @Column(nullable = false)
     private LocalDateTime nextCheckAt;
 
+    private LocalDateTime deletedAt;
+
     @Builder
     public Monitor(
             Long userId,
@@ -69,5 +71,13 @@ public class Monitor extends BaseTimeEntity {
         this.recoveryThreshold = recoveryThreshold;
         this.status = status;
         this.nextCheckAt = nextCheckAt;
+    }
+
+    public void updateNextCheckedAt(LocalDateTime now) {
+        this.nextCheckAt = now;
+    }
+
+    public void updateDeletedAt(LocalDateTime now) {
+        this.deletedAt = now;
     }
 }

@@ -81,13 +81,13 @@ public class MonitorService {
             String host = uri.getHost();
 
             if (scheme == null || host == null) {
-                throw new IllegalArgumentException();
+                throw new IllegalArgumentException("Invalid URL format.");
             }
             if (!scheme.equalsIgnoreCase("http") && !scheme.equalsIgnoreCase("https")) {
-                throw new IllegalArgumentException();
+                throw new IllegalArgumentException("Only http/https URLs are allowed.");
             }
         } catch (Exception e) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid URL format.");
+            throw new IllegalArgumentException("Invalid URL format.");
         }
     }
 }
