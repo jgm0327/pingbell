@@ -25,5 +25,5 @@ spring:
     locations: classpath:db/migration
 
 jwt:
-  secret: pingbell0327pingbell0327pingbell0327!!!
+  secret: ${JWT_SECRET}
   access-token-expiration-ms: 3600000
