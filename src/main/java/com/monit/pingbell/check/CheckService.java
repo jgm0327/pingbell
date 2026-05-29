@@ -3,6 +3,7 @@ package com.monit.pingbell.check;
 import com.monit.pingbell.check.client.HealthCheckClient;
 import com.monit.pingbell.monitor.Monitor;
 import com.monit.pingbell.monitor.MonitorRepository;
+import com.monit.pingbell.monitor.MonitorStatus;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -22,7 +23,7 @@ public class CheckService {
 
     @Transactional
     public void healthCheck(LocalDateTime now) {
-        List<Monitor> monitors = monitorRepository.findAllByDeletedAtIsNullAndNextCheckAtLessThanEqual(now);
+        List<Monitor> monitors = monitorRepository.findAllByStatusAndDeletedAtIsNullAndNextCheckAtLessThanEqual(MonitorStatus.ACTIVE, now);
         for (Monitor monitor : monitors) {
             CheckResult checkResult = executeOnce(monitor);
             checkResultRepository.save(checkResult);
@@ -66,8 +67,8 @@ public class CheckService {
         HttpStatus.Series series = HttpStatus.Series.valueOf(statusCode);
 
         return switch (series) {
-            case INFORMATIONAL, SUCCESSFUL, REDIRECTION, CLIENT_ERROR -> CheckStatus.SUCCESS;
-            case SERVER_ERROR -> CheckStatus.FAILURE;
+            case INFORMATIONAL, SUCCESSFUL, REDIRECTION -> CheckStatus.SUCCESS;
+            case SERVER_ERROR, CLIENT_ERROR -> CheckStatus.FAILURE;
         };
     }
 
