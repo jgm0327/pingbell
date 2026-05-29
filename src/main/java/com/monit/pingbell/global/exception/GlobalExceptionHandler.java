@@ -68,6 +68,22 @@ public class GlobalExceptionHandler {
         );
     }
 
+    @ExceptionHandler(HealthCheckClientException.class)
+    public ResponseEntity<ErrorResponse> handleHealthCheckClientException(
+            HealthCheckClientException e,
+            HttpServletRequest request
+    ) {
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(
+                new ErrorResponse(
+                        LocalDateTime.now(),
+                        HttpStatus.SERVICE_UNAVAILABLE.value(),
+                        "HEALTH_CHECK_CLIENT_ERROR",
+                        e.getMessage(),
+                        request.getRequestURI()
+                )
+        );
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleException(
             Exception e,
