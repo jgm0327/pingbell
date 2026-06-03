@@ -41,6 +41,12 @@ public class Monitor extends BaseTimeEntity {
     @Column(nullable = false)
     private Integer recoveryThreshold;
 
+    @Column(nullable = false)
+    private int recoveryCount;
+
+    @Column(nullable = false)
+    private int failureCount;
+
     @Column(nullable = false, length = 20)
     @Enumerated(EnumType.STRING)
     private MonitorStatus status;
@@ -79,5 +85,35 @@ public class Monitor extends BaseTimeEntity {
 
     public void updateDeletedAt(LocalDateTime now) {
         this.deletedAt = now;
+    }
+
+    public boolean canOpenIncident() {
+        return this.status == MonitorStatus.ACTIVE
+                && this.failureCount >= this.failureThreshold;
+    }
+
+    public boolean canRecover() {
+        return this.status == MonitorStatus.DOWN
+                && this.recoveryCount >= this.recoveryThreshold;
+    }
+
+    public void recover() {
+        this.recoveryCount = 0;
+        this.failureCount = 0;
+        this.status = MonitorStatus.ACTIVE;
+    }
+
+    public void recordSuccess() {
+        this.recoveryCount++;
+        this.failureCount = 0;
+    }
+
+    public void recordFailure() {
+        this.failureCount++;
+        this.recoveryCount = 0;
+    }
+
+    public void markDown() {
+        this.status = MonitorStatus.DOWN;
     }
 }

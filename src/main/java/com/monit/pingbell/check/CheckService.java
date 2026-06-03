@@ -1,6 +1,9 @@
 package com.monit.pingbell.check;
 
 import com.monit.pingbell.check.client.HealthCheckClient;
+import com.monit.pingbell.incident.Incident;
+import com.monit.pingbell.incident.IncidentRepository;
+import com.monit.pingbell.incident.IncidentStatus;
 import com.monit.pingbell.monitor.Monitor;
 import com.monit.pingbell.monitor.MonitorRepository;
 import com.monit.pingbell.monitor.MonitorStatus;
@@ -20,13 +23,40 @@ public class CheckService {
     private final MonitorRepository monitorRepository;
     private final HealthCheckClient healthCheckClient;
     private final CheckResultRepository checkResultRepository;
+    private final IncidentRepository incidentRepository;
 
     @Transactional
     public void healthCheck(LocalDateTime now) {
-        List<Monitor> monitors = monitorRepository.findAllByStatusAndDeletedAtIsNullAndNextCheckAtLessThanEqual(MonitorStatus.ACTIVE, now);
+        List<Monitor> monitors = monitorRepository
+                .findAllByStatusInAndDeletedAtIsNullAndNextCheckAtLessThanEqual(List.of(MonitorStatus.ACTIVE, MonitorStatus.DOWN), now);
+
         for (Monitor monitor : monitors) {
             CheckResult checkResult = executeOnce(monitor);
             checkResultRepository.save(checkResult);
+            if (checkResult.isSuccess()) {
+                monitor.recordSuccess();
+
+                if (monitor.canRecover()) {
+                    Incident incident = incidentRepository
+                            .findByMonitorAndStatus(monitor, IncidentStatus.OPEN)
+                            .orElseThrow(() -> new RuntimeException("Incident not found"));
+
+                    incident.resolve(now);
+                    monitor.recover();
+                }
+            } else {
+                monitor.recordFailure();
+
+                if (monitor.canOpenIncident() && !incidentRepository.existsByMonitorAndStatus(monitor, IncidentStatus.OPEN)) {
+                    incidentRepository.save(Incident.builder()
+                            .status(IncidentStatus.OPEN)
+                            .lastErrorMessage(checkResult.getErrorMessage())
+                            .startedAt(now)
+                            .monitor(monitor)
+                            .build());
+                    monitor.markDown();
+                }
+            }
             monitor.updateNextCheckedAt(now.plusSeconds(monitor.getIntervalSeconds()));
         }
     }

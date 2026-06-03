@@ -41,4 +41,8 @@ public class CheckResult extends BaseTimeEntity {
         this.responseTimeMs = responseTimeMs;
         this.errorMessage = errorMessage;
     }
+
+    public boolean isSuccess() {
+        return status.equals(CheckStatus.SUCCESS);
+    }
 }

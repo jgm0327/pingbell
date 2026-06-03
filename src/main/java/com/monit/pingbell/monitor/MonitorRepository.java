@@ -11,5 +11,5 @@ public interface MonitorRepository extends JpaRepository<Monitor, Long> {
 
     Optional<Monitor> findByIdAndUserId(Long id, Long userId);
 
-    List<Monitor> findAllByStatusAndDeletedAtIsNullAndNextCheckAtLessThanEqual(MonitorStatus status, LocalDateTime now);
+    List<Monitor> findAllByStatusInAndDeletedAtIsNullAndNextCheckAtLessThanEqual(List<MonitorStatus> status, LocalDateTime now);
 }
