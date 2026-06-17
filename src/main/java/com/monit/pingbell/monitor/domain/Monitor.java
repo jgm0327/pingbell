@@ -1,7 +1,8 @@
 
-package com.monit.pingbell.monitor;
+package com.monit.pingbell.monitor.domain;
 
 import com.monit.pingbell.global.common.BaseTimeEntity;
+import com.monit.pingbell.member.domain.Member;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Builder;
@@ -20,8 +21,9 @@ public class Monitor extends BaseTimeEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false)
-    private Long userId;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id", nullable = false)
+    private Member member;
 
     @Column(nullable = false, length = 100)
     private String name;
@@ -58,7 +60,7 @@ public class Monitor extends BaseTimeEntity {
 
     @Builder
     public Monitor(
-            Long userId,
+            Member member,
             String name,
             String url,
             Integer intervalSeconds,
@@ -68,7 +70,7 @@ public class Monitor extends BaseTimeEntity {
             MonitorStatus status,
             LocalDateTime nextCheckAt
     ) {
-        this.userId = userId;
+        this.member = member;
         this.name = name;
         this.url = url;
         this.intervalSeconds = intervalSeconds;

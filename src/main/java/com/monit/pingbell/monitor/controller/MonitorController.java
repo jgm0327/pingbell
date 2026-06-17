@@ -1,8 +1,9 @@
-package com.monit.pingbell.monitor;
+package com.monit.pingbell.monitor.controller;
 
 import com.monit.pingbell.monitor.dto.MonitorRegisterRequest;
 import com.monit.pingbell.monitor.dto.MonitorRegisterResponse;
 import com.monit.pingbell.monitor.dto.MonitorResponse;
+import com.monit.pingbell.monitor.service.MonitorService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;

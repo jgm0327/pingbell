@@ -1,4 +1,4 @@
-package com.monit.pingbell.member;
+package com.monit.pingbell.member.domain;
 
 import com.monit.pingbell.global.common.BaseTimeEntity;
 import jakarta.persistence.*;

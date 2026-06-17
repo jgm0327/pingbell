@@ -1,4 +1,6 @@
-package com.monit.pingbell.member;
+package com.monit.pingbell.member.repository;
+
+import com.monit.pingbell.member.domain.Member;
 
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;

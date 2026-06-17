@@ -1,7 +1,7 @@
 package com.monit.pingbell.monitor.dto;
 
-import com.monit.pingbell.monitor.Monitor;
-import com.monit.pingbell.monitor.MonitorStatus;
+import com.monit.pingbell.monitor.domain.Monitor;
+import com.monit.pingbell.monitor.domain.MonitorStatus;
 
 import java.time.LocalDateTime;
 
@@ -20,7 +20,7 @@ public record MonitorRegisterResponse(
     public static MonitorRegisterResponse from(Monitor monitor) {
         return new MonitorRegisterResponse(
                 monitor.getId(),
-                monitor.getUserId(),
+                monitor.getMember().getId(),
                 monitor.getName(),
                 monitor.getUrl(),
                 monitor.getIntervalSeconds(),

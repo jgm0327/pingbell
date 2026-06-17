@@ -1,7 +1,7 @@
-package com.monit.pingbell.check;
+package com.monit.pingbell.check.domain;
 
 import com.monit.pingbell.global.common.BaseTimeEntity;
-import com.monit.pingbell.monitor.Monitor;
+import com.monit.pingbell.monitor.domain.Monitor;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Builder;

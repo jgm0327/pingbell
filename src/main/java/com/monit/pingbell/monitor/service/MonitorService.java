@@ -1,8 +1,13 @@
-package com.monit.pingbell.monitor;
+package com.monit.pingbell.monitor.service;
 
+import com.monit.pingbell.member.domain.Member;
+import com.monit.pingbell.member.repository.MemberRepository;
+import com.monit.pingbell.monitor.domain.Monitor;
+import com.monit.pingbell.monitor.domain.MonitorStatus;
 import com.monit.pingbell.monitor.dto.MonitorRegisterRequest;
 import com.monit.pingbell.monitor.dto.MonitorRegisterResponse;
 import com.monit.pingbell.monitor.dto.MonitorResponse;
+import com.monit.pingbell.monitor.repository.MonitorRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -18,18 +23,22 @@ import java.util.List;
 public class MonitorService {
 
     private final MonitorRepository monitorRepository;
+    private final MemberRepository memberRepository;
 
-    public MonitorService(MonitorRepository monitorRepository) {
+    public MonitorService(MonitorRepository monitorRepository, MemberRepository memberRepository) {
         this.monitorRepository = monitorRepository;
+        this.memberRepository = memberRepository;
     }
 
     @Transactional
     public MonitorRegisterResponse monitorUrlRegister(MonitorRegisterRequest request) {
         Long memberId = resolveAuthenticatedMemberId();
+        Member member = memberRepository.findById(memberId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid authentication context."));
         validateUrl(request.url());
 
         Monitor monitor = Monitor.builder()
-                .userId(memberId)
+                .member(member)
                 .name(request.name())
                 .url(request.url())
                 .intervalSeconds(request.intervalSeconds())
@@ -47,7 +56,7 @@ public class MonitorService {
     @Transactional(readOnly = true)
     public List<MonitorResponse> getMonitors() {
         Long memberId = resolveAuthenticatedMemberId();
-        return monitorRepository.findAllByUserIdOrderByIdDesc(memberId)
+        return monitorRepository.findAllByMemberIdOrderByIdDesc(memberId)
                 .stream()
                 .map(MonitorResponse::from)
                 .toList();
@@ -56,7 +65,7 @@ public class MonitorService {
     @Transactional(readOnly = true)
     public MonitorResponse getMonitor(Long monitorId) {
         Long memberId = resolveAuthenticatedMemberId();
-        Monitor monitor = monitorRepository.findByIdAndUserId(monitorId, memberId)
+        Monitor monitor = monitorRepository.findByIdAndMemberId(monitorId, memberId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Monitor not found."));
         return MonitorResponse.from(monitor);
     }

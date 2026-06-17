@@ -1,4 +1,4 @@
-package com.monit.pingbell.incident;
+package com.monit.pingbell.incident.domain;
 
 public enum IncidentStatus {
     OPEN,

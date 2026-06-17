@@ -1,4 +1,4 @@
-package com.monit.pingbell.check;
+package com.monit.pingbell.check.domain;
 
 public enum CheckStatus {
     SUCCESS,

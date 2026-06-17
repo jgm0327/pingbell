@@ -1,5 +1,6 @@
-package com.monit.pingbell.check;
+package com.monit.pingbell.check.scheduler;
 
+import com.monit.pingbell.check.service.CheckService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;

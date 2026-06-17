@@ -144,4 +144,9 @@ gradle-app.setting
 
 .env
 
+AGENTS.md
+docs/agents
+docs/project-status.md
+test-target-server
+
 # End of https://www.toptal.com/developers/gitignore/api/windows,intellij+all,gradle

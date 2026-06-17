@@ -1,6 +1,8 @@
-package com.monit.pingbell.incident;
+package com.monit.pingbell.incident.repository;
 
-import com.monit.pingbell.monitor.Monitor;
+import com.monit.pingbell.incident.domain.Incident;
+import com.monit.pingbell.incident.domain.IncidentStatus;
+import com.monit.pingbell.monitor.domain.Monitor;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.Optional;

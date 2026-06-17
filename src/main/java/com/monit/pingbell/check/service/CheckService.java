@@ -1,12 +1,16 @@
-package com.monit.pingbell.check;
+package com.monit.pingbell.check.service;
 
 import com.monit.pingbell.check.client.HealthCheckClient;
-import com.monit.pingbell.incident.Incident;
-import com.monit.pingbell.incident.IncidentRepository;
-import com.monit.pingbell.incident.IncidentStatus;
-import com.monit.pingbell.monitor.Monitor;
-import com.monit.pingbell.monitor.MonitorRepository;
-import com.monit.pingbell.monitor.MonitorStatus;
+import com.monit.pingbell.check.domain.CheckResult;
+import com.monit.pingbell.check.domain.CheckStatus;
+import com.monit.pingbell.check.repository.CheckResultRepository;
+import com.monit.pingbell.incident.domain.Incident;
+import com.monit.pingbell.incident.domain.IncidentStatus;
+import com.monit.pingbell.incident.repository.IncidentRepository;
+import com.monit.pingbell.monitor.domain.Monitor;
+import com.monit.pingbell.monitor.domain.MonitorStatus;
+import com.monit.pingbell.monitor.repository.MonitorRepository;
+import com.monit.pingbell.notification.service.NotificationService;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -24,6 +28,7 @@ public class CheckService {
     private final HealthCheckClient healthCheckClient;
     private final CheckResultRepository checkResultRepository;
     private final IncidentRepository incidentRepository;
+    private final NotificationService notificationService;
 
     @Transactional
     public void healthCheck(LocalDateTime now) {
@@ -43,18 +48,20 @@ public class CheckService {
 
                     incident.resolve(now);
                     monitor.recover();
+                    notifyIncidentResolved(incident, now);
                 }
             } else {
                 monitor.recordFailure();
 
                 if (monitor.canOpenIncident() && !incidentRepository.existsByMonitorAndStatus(monitor, IncidentStatus.OPEN)) {
-                    incidentRepository.save(Incident.builder()
+                    Incident incident = incidentRepository.save(Incident.builder()
                             .status(IncidentStatus.OPEN)
                             .lastErrorMessage(checkResult.getErrorMessage())
                             .startedAt(now)
                             .monitor(monitor)
                             .build());
                     monitor.markDown();
+                    notifyIncidentOpened(incident, now);
                 }
             }
             monitor.updateNextCheckedAt(now.plusSeconds(monitor.getIntervalSeconds()));
@@ -107,5 +114,19 @@ public class CheckService {
         return error instanceof SocketTimeoutException
                 || error instanceof HttpTimeoutException
                 || error.getCause() instanceof SocketTimeoutException;
+    }
+
+    private void notifyIncidentOpened(Incident incident, LocalDateTime now) {
+        try {
+            notificationService.notifyIncidentOpened(incident, now);
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void notifyIncidentResolved(Incident incident, LocalDateTime now) {
+        try {
+            notificationService.notifyIncidentResolved(incident, now);
+        } catch (Exception ignored) {
+        }
     }
 }

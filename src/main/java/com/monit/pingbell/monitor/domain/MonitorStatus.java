@@ -1,4 +1,4 @@
-package com.monit.pingbell.monitor;
+package com.monit.pingbell.monitor.domain;
 
 public enum MonitorStatus {
     ACTIVE,     // 정상적으로 주기적 헬스체크 수행 중
