@@ -5,9 +5,20 @@ import com.monit.pingbell.incident.domain.IncidentStatus;
 import com.monit.pingbell.monitor.domain.Monitor;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.util.List;
 import java.util.Optional;
 
 public interface IncidentRepository extends JpaRepository<Incident, Long> {
     Optional<Incident> findByMonitorAndStatus(Monitor monitor, IncidentStatus status);
     boolean existsByMonitorAndStatus(Monitor monitor, IncidentStatus status);
+
+    List<Incident> findAllByMonitorMemberIdOrderByStartedAtDesc(Long memberId);
+
+    List<Incident> findAllByMonitorIdAndMonitorMemberIdOrderByStartedAtDesc(Long monitorId, Long memberId);
+
+    List<Incident> findAllByMonitorIdOrderByStartedAtDesc(Long monitorId);
+
+    Optional<Incident> findByIdAndMonitorMemberId(Long incidentId, Long memberId);
+
+    boolean existsByIdAndMonitorMemberId(Long incidentId, Long memberId);
 }
