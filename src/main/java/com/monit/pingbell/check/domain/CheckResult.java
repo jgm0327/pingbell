@@ -18,7 +18,7 @@ public class CheckResult extends BaseTimeEntity {
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "monitor_id")
+    @JoinColumn(name = "monitor_id", foreignKey = @ForeignKey(ConstraintMode.NO_CONSTRAINT))
     private Monitor monitor;
 
     @Column(nullable = false)

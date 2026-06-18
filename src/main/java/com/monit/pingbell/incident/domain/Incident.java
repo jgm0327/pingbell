@@ -22,7 +22,7 @@ public class Incident extends BaseTimeEntity {
     private Long id;
 
     @ManyToOne
-    @JoinColumn(name = "monitor_id")
+    @JoinColumn(name = "monitor_id", foreignKey = @ForeignKey(ConstraintMode.NO_CONSTRAINT))
     private Monitor monitor;
 
     @Enumerated(EnumType.STRING)

@@ -22,11 +22,11 @@ public class NotificationHistory extends BaseTimeEntity {
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "incident_id", nullable = false)
+    @JoinColumn(name = "incident_id", nullable = false, foreignKey = @ForeignKey(ConstraintMode.NO_CONSTRAINT))
     private Incident incident;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "channel_id", nullable = false)
+    @JoinColumn(name = "channel_id", nullable = false, foreignKey = @ForeignKey(ConstraintMode.NO_CONSTRAINT))
     private NotificationChannel channel;
 
     @Enumerated(EnumType.STRING)

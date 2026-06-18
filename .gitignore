@@ -148,5 +148,7 @@ AGENTS.md
 docs/agents
 docs/project-status.md
 test-target-server
+frontend
+
 
 # End of https://www.toptal.com/developers/gitignore/api/windows,intellij+all,gradle

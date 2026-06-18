@@ -25,7 +25,7 @@ public class NotificationChannel extends BaseTimeEntity {
     private UUID publicId;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "member_id", nullable = false)
+    @JoinColumn(name = "member_id", nullable = false, foreignKey = @ForeignKey(ConstraintMode.NO_CONSTRAINT))
     private Member member;
 
     @Enumerated(EnumType.STRING)
