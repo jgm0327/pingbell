@@ -9,8 +9,6 @@ import com.monit.pingbell.monitor.dto.MonitorRegisterResponse;
 import com.monit.pingbell.monitor.dto.MonitorResponse;
 import com.monit.pingbell.monitor.repository.MonitorRepository;
 import org.springframework.http.HttpStatus;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -31,8 +29,7 @@ public class MonitorService {
     }
 
     @Transactional
-    public MonitorRegisterResponse monitorUrlRegister(MonitorRegisterRequest request) {
-        Long memberId = resolveAuthenticatedMemberId();
+    public MonitorRegisterResponse monitorUrlRegister(Long memberId, MonitorRegisterRequest request) {
         Member member = memberRepository.findById(memberId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid authentication context."));
         validateUrl(request.url());
@@ -54,8 +51,7 @@ public class MonitorService {
     }
 
     @Transactional(readOnly = true)
-    public List<MonitorResponse> getMonitors() {
-        Long memberId = resolveAuthenticatedMemberId();
+    public List<MonitorResponse> getMonitors(Long memberId) {
         return monitorRepository.findAllByMemberIdOrderByIdDesc(memberId)
                 .stream()
                 .map(MonitorResponse::from)
@@ -64,23 +60,9 @@ public class MonitorService {
 
     @Transactional(readOnly = true)
     public MonitorResponse getMonitor(Long monitorId) {
-        Long memberId = resolveAuthenticatedMemberId();
-        Monitor monitor = monitorRepository.findByIdAndMemberId(monitorId, memberId)
+        Monitor monitor = monitorRepository.findById(monitorId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Monitor not found."));
         return MonitorResponse.from(monitor);
-    }
-
-    private Long resolveAuthenticatedMemberId() {
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (authentication == null || authentication.getCredentials() == null) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Authentication required.");
-        }
-
-        try {
-            return Long.valueOf(authentication.getCredentials().toString());
-        } catch (NumberFormatException e) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid authentication context.");
-        }
     }
 
     private void validateUrl(String rawUrl) {

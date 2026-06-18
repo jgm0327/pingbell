@@ -8,8 +8,6 @@ import com.monit.pingbell.notification.dto.NotificationChannelResponse;
 import com.monit.pingbell.notification.repository.NotificationChannelRepository;
 import com.monit.pingbell.notification.type.NotificationChannelType;
 import org.springframework.http.HttpStatus;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -31,8 +29,7 @@ public class NotificationChannelService {
     }
 
     @Transactional
-    public NotificationChannelResponse createChannel(NotificationChannelCreateRequest request) {
-        Long memberId = resolveAuthenticatedMemberId();
+    public NotificationChannelResponse createChannel(Long memberId, NotificationChannelCreateRequest request) {
         Member member = memberRepository.findById(memberId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid authentication context."));
 
@@ -50,24 +47,10 @@ public class NotificationChannelService {
     }
 
     @Transactional(readOnly = true)
-    public List<NotificationChannelResponse> getChannels() {
-        Long memberId = resolveAuthenticatedMemberId();
+    public List<NotificationChannelResponse> getChannels(Long memberId) {
         return channelRepository.findAllByMemberIdOrderByIdDesc(memberId)
                 .stream()
                 .map(NotificationChannelResponse::from)
                 .toList();
-    }
-
-    private Long resolveAuthenticatedMemberId() {
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-        if (authentication == null || authentication.getCredentials() == null) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Authentication required.");
-        }
-
-        try {
-            return Long.valueOf(authentication.getCredentials().toString());
-        } catch (NumberFormatException e) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid authentication context.");
-        }
     }
 }

@@ -1,11 +1,13 @@
 package com.monit.pingbell.monitor.controller;
 
+import com.monit.pingbell.global.security.auth.AuthenticatedMember;
 import com.monit.pingbell.monitor.dto.MonitorRegisterRequest;
 import com.monit.pingbell.monitor.dto.MonitorRegisterResponse;
 import com.monit.pingbell.monitor.dto.MonitorResponse;
 import com.monit.pingbell.monitor.service.MonitorService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.http.HttpStatus;
@@ -26,13 +28,16 @@ public class MonitorController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public MonitorRegisterResponse monitorUrlRegister(@Valid @RequestBody MonitorRegisterRequest request) {
-        return monitorService.monitorUrlRegister(request);
+    public MonitorRegisterResponse monitorUrlRegister(
+            @AuthenticationPrincipal AuthenticatedMember member,
+            @Valid @RequestBody MonitorRegisterRequest request
+    ) {
+        return monitorService.monitorUrlRegister(member.id(), request);
     }
 
     @GetMapping
-    public List<MonitorResponse> getMonitors() {
-        return monitorService.getMonitors();
+    public List<MonitorResponse> getMonitors(@AuthenticationPrincipal AuthenticatedMember member) {
+        return monitorService.getMonitors(member.id());
     }
 
     @GetMapping("/{monitorId}")
