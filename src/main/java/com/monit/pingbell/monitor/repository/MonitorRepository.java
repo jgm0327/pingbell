@@ -13,5 +13,7 @@ public interface MonitorRepository extends JpaRepository<Monitor, Long> {
 
     Optional<Monitor> findByIdAndMemberId(Long id, Long memberId);
 
+    boolean existsByIdAndMemberId(Long id, Long memberId);
+
     List<Monitor> findAllByStatusInAndDeletedAtIsNullAndNextCheckAtLessThanEqual(List<MonitorStatus> status, LocalDateTime now);
 }
