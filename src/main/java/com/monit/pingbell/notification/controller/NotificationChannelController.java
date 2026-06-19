@@ -3,12 +3,16 @@ package com.monit.pingbell.notification.controller;
 import com.monit.pingbell.global.security.auth.AuthenticatedMember;
 import com.monit.pingbell.notification.dto.NotificationChannelCreateRequest;
 import com.monit.pingbell.notification.dto.NotificationChannelResponse;
+import com.monit.pingbell.notification.dto.NotificationChannelUpdateRequest;
 import com.monit.pingbell.notification.service.NotificationChannelService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -16,6 +20,7 @@ import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/notification-channels")
@@ -36,5 +41,23 @@ public class NotificationChannelController {
     @GetMapping
     public List<NotificationChannelResponse> getChannels(@AuthenticationPrincipal AuthenticatedMember member) {
         return channelService.getChannels(member.id());
+    }
+
+    @PatchMapping("/{publicId}")
+    public NotificationChannelResponse updateChannel(
+            @AuthenticationPrincipal AuthenticatedMember member,
+            @PathVariable UUID publicId,
+            @Valid @RequestBody NotificationChannelUpdateRequest request
+    ) {
+        return channelService.updateChannel(member.id(), publicId, request);
+    }
+
+    @DeleteMapping("/{publicId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteChannel(
+            @AuthenticationPrincipal AuthenticatedMember member,
+            @PathVariable UUID publicId
+    ) {
+        channelService.deleteChannel(member.id(), publicId);
     }
 }

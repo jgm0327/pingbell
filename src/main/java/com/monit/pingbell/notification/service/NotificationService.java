@@ -37,7 +37,7 @@ public class NotificationService {
 
     private void notify(Incident incident, NotificationType type, LocalDateTime now) {
         Monitor monitor = incident.getMonitor();
-        List<NotificationChannel> channels = channelRepository.findAllByMemberAndEnabledTrue(monitor.getMember());
+        List<NotificationChannel> channels = findEnabledChannelsOrCreateDefaultEmail(monitor);
 
         for (NotificationChannel channel : channels) {
             if (historyRepository.existsByIncidentAndChannelAndNotificationType(incident, channel, type)) {
@@ -53,6 +53,24 @@ public class NotificationService {
                 history.markFailed(toErrorMessage(e));
             }
         }
+    }
+
+    private List<NotificationChannel> findEnabledChannelsOrCreateDefaultEmail(Monitor monitor) {
+        List<NotificationChannel> channels = channelRepository.findAllByMemberAndEnabledTrue(monitor.getMember());
+        if (!channels.isEmpty()) {
+            return channels;
+        }
+
+        if (!channelRepository.findAllByMemberIdOrderByIdDesc(monitor.getMember().getId()).isEmpty()) {
+            return channels;
+        }
+
+        NotificationChannel defaultChannel = channelRepository.save(new NotificationChannel(
+                monitor.getMember(),
+                NotificationChannelType.EMAIL,
+                monitor.getMember().getEmail()
+        ));
+        return List.of(defaultChannel);
     }
 
     private NotificationSender findSender(NotificationChannelType type) {

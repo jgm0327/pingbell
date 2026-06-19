@@ -5,6 +5,7 @@ import com.monit.pingbell.member.repository.MemberRepository;
 import com.monit.pingbell.notification.domain.NotificationChannel;
 import com.monit.pingbell.notification.dto.NotificationChannelCreateRequest;
 import com.monit.pingbell.notification.dto.NotificationChannelResponse;
+import com.monit.pingbell.notification.dto.NotificationChannelUpdateRequest;
 import com.monit.pingbell.notification.repository.NotificationChannelRepository;
 import com.monit.pingbell.notification.type.NotificationChannelType;
 import org.springframework.http.HttpStatus;
@@ -13,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
+import java.util.UUID;
 
 @Service
 public class NotificationChannelService {
@@ -52,5 +54,28 @@ public class NotificationChannelService {
                 .stream()
                 .map(NotificationChannelResponse::from)
                 .toList();
+    }
+
+    @Transactional
+    public NotificationChannelResponse updateChannel(
+            Long memberId,
+            UUID publicId,
+            NotificationChannelUpdateRequest request
+    ) {
+        NotificationChannel channel = findOwnedChannel(publicId, memberId);
+        channel.updateTarget(request.target());
+        channel.enable();
+        return NotificationChannelResponse.from(channel);
+    }
+
+    @Transactional
+    public void deleteChannel(Long memberId, UUID publicId) {
+        NotificationChannel channel = findOwnedChannel(publicId, memberId);
+        channel.disable();
+    }
+
+    private NotificationChannel findOwnedChannel(UUID publicId, Long memberId) {
+        return channelRepository.findByPublicIdAndMemberId(publicId, memberId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Notification channel not found."));
     }
 }
