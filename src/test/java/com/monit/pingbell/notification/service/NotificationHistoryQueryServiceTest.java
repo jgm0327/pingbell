@@ -16,6 +16,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -74,24 +76,29 @@ class NotificationHistoryQueryServiceTest {
                 nextRetryAt
         );
 
-        when(historyRepository.findAllByChannelMemberIdOrderByIdDesc(member.getId()))
-                .thenReturn(List.of(history));
+        PageRequest pageable = PageRequest.of(0, 20);
+        when(historyRepository.findAllByChannelMemberId(member.getId(), pageable))
+                .thenReturn(new PageImpl<>(List.of(history), pageable, 1));
 
-        var responses = historyQueryService.getHistories(member.getId());
+        var responses = historyQueryService.getHistories(member.getId(), pageable);
 
-        assertThat(responses).hasSize(1);
-        assertThat(responses.get(0).channelType()).isEqualTo(NotificationChannelType.SLACK);
-        assertThat(responses.get(0).channelEnabled()).isFalse();
-        assertThat(responses.get(0).maskedTarget()).isEqualTo("****oken");
-        assertThat(responses.get(0).notificationType()).isEqualTo(NotificationType.INCIDENT_OPEN);
-        assertThat(responses.get(0).status()).isEqualTo(NotificationStatus.RETRY_PENDING);
-        assertThat(responses.get(0).retryCount()).isZero();
-        assertThat(responses.get(0).maxRetryCount()).isEqualTo(2);
-        assertThat(responses.get(0).nextRetryAt()).isEqualTo(nextRetryAt);
-        assertThat(responses.get(0).lastAttemptedAt()).isEqualTo(attemptedAt);
-        assertThat(responses.get(0).retryable()).isTrue();
-        assertThat(responses.get(0).manualResend()).isFalse();
-        assertThat(responses.get(0).resendOfHistoryId()).isNull();
-        assertThat(responses.get(0).errorMessage()).isEqualTo("Failed to call [redacted-url]");
+        assertThat(responses.content()).hasSize(1);
+        assertThat(responses.page()).isZero();
+        assertThat(responses.size()).isEqualTo(20);
+        assertThat(responses.totalElements()).isEqualTo(1);
+        assertThat(responses.totalPages()).isEqualTo(1);
+        assertThat(responses.content().get(0).channelType()).isEqualTo(NotificationChannelType.SLACK);
+        assertThat(responses.content().get(0).channelEnabled()).isFalse();
+        assertThat(responses.content().get(0).maskedTarget()).isEqualTo("****oken");
+        assertThat(responses.content().get(0).notificationType()).isEqualTo(NotificationType.INCIDENT_OPEN);
+        assertThat(responses.content().get(0).status()).isEqualTo(NotificationStatus.RETRY_PENDING);
+        assertThat(responses.content().get(0).retryCount()).isZero();
+        assertThat(responses.content().get(0).maxRetryCount()).isEqualTo(2);
+        assertThat(responses.content().get(0).nextRetryAt()).isEqualTo(nextRetryAt);
+        assertThat(responses.content().get(0).lastAttemptedAt()).isEqualTo(attemptedAt);
+        assertThat(responses.content().get(0).retryable()).isTrue();
+        assertThat(responses.content().get(0).manualResend()).isFalse();
+        assertThat(responses.content().get(0).resendOfHistoryId()).isNull();
+        assertThat(responses.content().get(0).errorMessage()).isEqualTo("Failed to call [redacted-url]");
     }
 }

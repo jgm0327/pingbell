@@ -1,6 +1,8 @@
 package com.monit.pingbell.check.repository;
 
 import com.monit.pingbell.check.domain.CheckResult;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
@@ -11,7 +13,7 @@ public interface CheckResultRepository extends JpaRepository<CheckResult, Long> 
 
     Optional<CheckResult> findFirstByMonitorIdAndMonitorMemberIdOrderByCreatedAtDesc(Long monitorId, Long memberId);
 
-    List<CheckResult> findAllByMonitorIdOrderByCreatedAtDesc(Long monitorId);
+    Page<CheckResult> findAllByMonitorIdOrderByIdDesc(Long monitorId, Pageable pageable);
 
     Optional<CheckResult> findFirstByMonitorIdOrderByCreatedAtDesc(Long monitorId);
 }
