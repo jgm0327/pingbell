@@ -4,7 +4,6 @@ import com.monit.pingbell.incident.domain.Incident;
 import com.monit.pingbell.monitor.domain.Monitor;
 import com.monit.pingbell.notification.domain.NotificationChannel;
 import com.monit.pingbell.notification.domain.NotificationHistory;
-import com.monit.pingbell.notification.dto.NotificationMessage;
 import com.monit.pingbell.notification.repository.NotificationChannelRepository;
 import com.monit.pingbell.notification.repository.NotificationHistoryRepository;
 import com.monit.pingbell.notification.sender.NotificationSender;
@@ -24,6 +23,8 @@ public class NotificationService {
     private final NotificationChannelRepository channelRepository;
     private final NotificationHistoryRepository historyRepository;
     private final List<NotificationSender> senders;
+    private final NotificationFailureClassifier failureClassifier;
+    private final NotificationMessageFactory messageFactory;
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void notifyIncidentOpened(Incident incident, LocalDateTime now) {
@@ -47,10 +48,15 @@ public class NotificationService {
             NotificationHistory history = historyRepository.save(new NotificationHistory(incident, channel, type));
             try {
                 NotificationSender sender = findSender(channel.getType());
-                sender.send(channel, createMessage(incident, type));
+                sender.send(channel, messageFactory.create(incident, type));
                 history.markSent(now);
             } catch (Exception e) {
-                history.markFailed(toErrorMessage(e));
+                NotificationFailureResult failure = failureClassifier.classify(e);
+                if (failure.retryable()) {
+                    history.markRetryPending(failure.errorMessage(), now, nextRetryAt(history, now));
+                } else {
+                    history.markFailed(failure.errorMessage(), now);
+                }
             }
         }
     }
@@ -80,62 +86,10 @@ public class NotificationService {
                 .orElseThrow(() -> new IllegalStateException("Unsupported notification channel type: " + type));
     }
 
-    private NotificationMessage createMessage(Incident incident, NotificationType type) {
-        Monitor monitor = incident.getMonitor();
-        return switch (type) {
-            case INCIDENT_OPEN -> new NotificationMessage(
-                    type,
-                    "[Pingbell] 장애 발생: " + monitor.getName(),
-                    """
-                            모니터링 대상에 장애가 발생했습니다.
-
-                            Monitor: %s
-                            URL: %s
-                            Status: %s
-                            Started At: %s
-                            Last Error: %s
-                            """.formatted(
-                            monitor.getName(),
-                            monitor.getUrl(),
-                            incident.getStatus(),
-                            incident.getStartedAt(),
-                            blankToDefault(incident.getLastErrorMessage(), "-")
-                    )
-            );
-            case INCIDENT_RESOLVED -> new NotificationMessage(
-                    type,
-                    "[Pingbell] 장애 복구: " + monitor.getName(),
-                    """
-                            모니터링 대상이 복구되었습니다.
-
-                            Monitor: %s
-                            URL: %s
-                            Status: %s
-                            Started At: %s
-                            Resolved At: %s
-                            """.formatted(
-                            monitor.getName(),
-                            monitor.getUrl(),
-                            incident.getStatus(),
-                            incident.getStartedAt(),
-                            incident.getResolvedAt()
-                    )
-            );
-        };
-    }
-
-    private String toErrorMessage(Exception e) {
-        String message = e.getMessage();
-        if (message == null || message.isBlank()) {
-            return e.getClass().getSimpleName();
+    private LocalDateTime nextRetryAt(NotificationHistory history, LocalDateTime now) {
+        if (history.getRetryCount() == 0) {
+            return now.plusMinutes(1);
         }
-        return message.length() > 1000 ? message.substring(0, 1000) : message;
-    }
-
-    private String blankToDefault(String value, String defaultValue) {
-        if (value == null || value.isBlank()) {
-            return defaultValue;
-        }
-        return value;
+        return now.plusMinutes(5);
     }
 }
