@@ -7,6 +7,7 @@ import com.monit.pingbell.monitor.domain.MonitorStatus;
 import com.monit.pingbell.monitor.dto.MonitorRegisterRequest;
 import com.monit.pingbell.monitor.dto.MonitorRegisterResponse;
 import com.monit.pingbell.monitor.dto.MonitorResponse;
+import com.monit.pingbell.monitor.dto.MonitorUpdateRequest;
 import com.monit.pingbell.monitor.repository.MonitorRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -52,17 +53,59 @@ public class MonitorService {
 
     @Transactional(readOnly = true)
     public List<MonitorResponse> getMonitors(Long memberId) {
-        return monitorRepository.findAllByMemberIdOrderByIdDesc(memberId)
+        return monitorRepository.findAllByMemberIdAndDeletedAtIsNullOrderByIdDesc(memberId)
                 .stream()
                 .map(MonitorResponse::from)
                 .toList();
     }
 
     @Transactional(readOnly = true)
-    public MonitorResponse getMonitor(Long monitorId) {
-        Monitor monitor = monitorRepository.findById(monitorId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Monitor not found."));
+    public MonitorResponse getMonitor(Long memberId, Long monitorId) {
+        Monitor monitor = getOwnedMonitor(memberId, monitorId);
         return MonitorResponse.from(monitor);
+    }
+
+    @Transactional
+    public MonitorResponse updateMonitor(Long memberId, Long monitorId, MonitorUpdateRequest request) {
+        validateUrl(request.url());
+        Monitor monitor = getOwnedMonitor(memberId, monitorId);
+        LocalDateTime nextCheckAt = LocalDateTime.now().plusSeconds(request.intervalSeconds());
+
+        monitor.update(
+                request.name(),
+                request.url(),
+                request.intervalSeconds(),
+                request.timeoutMillis(),
+                request.failureThreshold(),
+                request.recoveryThreshold(),
+                nextCheckAt
+        );
+        return MonitorResponse.from(monitor);
+    }
+
+    @Transactional
+    public MonitorResponse pauseMonitor(Long memberId, Long monitorId) {
+        Monitor monitor = getOwnedMonitor(memberId, monitorId);
+        monitor.pause();
+        return MonitorResponse.from(monitor);
+    }
+
+    @Transactional
+    public MonitorResponse activateMonitor(Long memberId, Long monitorId) {
+        Monitor monitor = getOwnedMonitor(memberId, monitorId);
+        monitor.activate(LocalDateTime.now().plusSeconds(monitor.getIntervalSeconds()));
+        return MonitorResponse.from(monitor);
+    }
+
+    @Transactional
+    public void deleteMonitor(Long memberId, Long monitorId) {
+        Monitor monitor = getOwnedMonitor(memberId, monitorId);
+        monitor.delete(LocalDateTime.now());
+    }
+
+    private Monitor getOwnedMonitor(Long memberId, Long monitorId) {
+        return monitorRepository.findByIdAndMemberIdAndDeletedAtIsNull(monitorId, memberId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Monitor not found."));
     }
 
     private void validateUrl(String rawUrl) {
@@ -72,13 +115,13 @@ public class MonitorService {
             String host = uri.getHost();
 
             if (scheme == null || host == null) {
-                throw new IllegalArgumentException("Invalid URL format.");
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid URL format.");
             }
             if (!scheme.equalsIgnoreCase("http") && !scheme.equalsIgnoreCase("https")) {
-                throw new IllegalArgumentException("Only http/https URLs are allowed.");
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Only http/https URLs are allowed.");
             }
-        } catch (Exception e) {
-            throw new IllegalArgumentException("Invalid URL format.");
+        } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid URL format.");
         }
     }
 }

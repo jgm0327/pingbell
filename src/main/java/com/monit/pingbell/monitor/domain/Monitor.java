@@ -85,8 +85,38 @@ public class Monitor extends BaseTimeEntity {
         this.nextCheckAt = now;
     }
 
-    public void updateDeletedAt(LocalDateTime now) {
-        this.deletedAt = now;
+    public void update(
+            String name,
+            String url,
+            Integer intervalSeconds,
+            Integer timeoutMillis,
+            Integer failureThreshold,
+            Integer recoveryThreshold,
+            LocalDateTime nextCheckAt
+    ) {
+        this.name = name;
+        this.url = url;
+        this.intervalSeconds = intervalSeconds;
+        this.timeoutMillis = timeoutMillis;
+        this.failureThreshold = failureThreshold;
+        this.recoveryThreshold = recoveryThreshold;
+        this.nextCheckAt = nextCheckAt;
+    }
+
+    public void pause() {
+        this.status = MonitorStatus.PAUSED;
+    }
+
+    public void activate(LocalDateTime nextCheckAt) {
+        this.status = MonitorStatus.ACTIVE;
+        this.nextCheckAt = nextCheckAt;
+        this.failureCount = 0;
+        this.recoveryCount = 0;
+    }
+
+    public void delete(LocalDateTime deletedAt) {
+        this.status = MonitorStatus.PAUSED;
+        this.deletedAt = deletedAt;
     }
 
     public boolean canOpenIncident() {

@@ -9,9 +9,9 @@ import java.util.List;
 import java.util.Optional;
 
 public interface MonitorRepository extends JpaRepository<Monitor, Long> {
-    List<Monitor> findAllByMemberIdOrderByIdDesc(Long memberId);
+    List<Monitor> findAllByMemberIdAndDeletedAtIsNullOrderByIdDesc(Long memberId);
 
-    Optional<Monitor> findByIdAndMemberId(Long id, Long memberId);
+    Optional<Monitor> findByIdAndMemberIdAndDeletedAtIsNull(Long id, Long memberId);
 
     boolean existsByIdAndMemberId(Long id, Long memberId);
 
