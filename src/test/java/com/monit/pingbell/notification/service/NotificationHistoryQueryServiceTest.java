@@ -60,12 +60,19 @@ class NotificationHistoryQueryServiceTest {
                 NotificationChannelType.SLACK,
                 "https://hooks.slack.com/services/secret-token"
         );
+        channel.disable();
         NotificationHistory history = new NotificationHistory(
                 incident,
                 channel,
                 NotificationType.INCIDENT_OPEN
         );
-        history.markFailed("Failed to call https://hooks.slack.com/services/secret-token");
+        LocalDateTime attemptedAt = LocalDateTime.of(2026, 6, 22, 10, 0);
+        LocalDateTime nextRetryAt = attemptedAt.plusMinutes(1);
+        history.markRetryPending(
+                "Failed to call https://hooks.slack.com/services/secret-token",
+                attemptedAt,
+                nextRetryAt
+        );
 
         when(historyRepository.findAllByChannelMemberIdOrderByIdDesc(member.getId()))
                 .thenReturn(List.of(history));
@@ -74,9 +81,17 @@ class NotificationHistoryQueryServiceTest {
 
         assertThat(responses).hasSize(1);
         assertThat(responses.get(0).channelType()).isEqualTo(NotificationChannelType.SLACK);
+        assertThat(responses.get(0).channelEnabled()).isFalse();
         assertThat(responses.get(0).maskedTarget()).isEqualTo("****oken");
         assertThat(responses.get(0).notificationType()).isEqualTo(NotificationType.INCIDENT_OPEN);
-        assertThat(responses.get(0).status()).isEqualTo(NotificationStatus.FAILED);
+        assertThat(responses.get(0).status()).isEqualTo(NotificationStatus.RETRY_PENDING);
+        assertThat(responses.get(0).retryCount()).isZero();
+        assertThat(responses.get(0).maxRetryCount()).isEqualTo(2);
+        assertThat(responses.get(0).nextRetryAt()).isEqualTo(nextRetryAt);
+        assertThat(responses.get(0).lastAttemptedAt()).isEqualTo(attemptedAt);
+        assertThat(responses.get(0).retryable()).isTrue();
+        assertThat(responses.get(0).manualResend()).isFalse();
+        assertThat(responses.get(0).resendOfHistoryId()).isNull();
         assertThat(responses.get(0).errorMessage()).isEqualTo("Failed to call [redacted-url]");
     }
 }
