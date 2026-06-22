@@ -56,7 +56,7 @@ public class CheckService {
                 if (monitor.canOpenIncident() && !incidentRepository.existsByMonitorAndStatus(monitor, IncidentStatus.OPEN)) {
                     Incident incident = incidentRepository.save(Incident.builder()
                             .status(IncidentStatus.OPEN)
-                            .lastErrorMessage(checkResult.getErrorMessage())
+                            .lastErrorMessage(toIncidentReason(checkResult))
                             .startedAt(now)
                             .monitor(monitor)
                             .build());
@@ -114,6 +114,18 @@ public class CheckService {
         return error instanceof SocketTimeoutException
                 || error instanceof HttpTimeoutException
                 || error.getCause() instanceof SocketTimeoutException;
+    }
+
+    private String toIncidentReason(CheckResult checkResult) {
+        if (checkResult.getErrorMessage() != null && !checkResult.getErrorMessage().isBlank()) {
+            return checkResult.getErrorMessage();
+        }
+
+        if (checkResult.getHttpStatus() != null) {
+            return "HTTP " + checkResult.getHttpStatus();
+        }
+
+        return checkResult.getStatus().name();
     }
 
     private void notifyIncidentOpened(Incident incident, LocalDateTime now) {
