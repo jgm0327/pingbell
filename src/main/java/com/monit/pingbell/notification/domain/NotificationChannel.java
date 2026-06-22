@@ -2,6 +2,7 @@ package com.monit.pingbell.notification.domain;
 
 import com.monit.pingbell.global.common.BaseTimeEntity;
 import com.monit.pingbell.member.domain.Member;
+import com.monit.pingbell.notification.crypto.NotificationTargetEncryptConverter;
 import com.monit.pingbell.notification.type.NotificationChannelType;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
@@ -33,7 +34,8 @@ public class NotificationChannel extends BaseTimeEntity {
     private NotificationChannelType type;
 
     // EMAIL이면 이메일 주소, SLACK/DISCORD면 Webhook URL
-    @Column(name = "target", nullable = false, length = 500)
+    @Convert(converter = NotificationTargetEncryptConverter.class)
+    @Column(name = "target", nullable = false, length = 2000)
     private String target;
 
     @Column(name = "enabled", nullable = false)

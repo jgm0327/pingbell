@@ -142,7 +142,7 @@ gradle-app.setting
 # Java heap dump
 *.hprof
 
-.env
+.env*
 
 AGENTS.md
 docs/agents

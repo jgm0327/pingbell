@@ -13,11 +13,16 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.List;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 @Service
 public class NotificationChannelService {
+
+    private static final Pattern SIMPLE_EMAIL_PATTERN = Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
 
     private final NotificationChannelRepository channelRepository;
     private final MemberRepository memberRepository;
@@ -35,9 +40,7 @@ public class NotificationChannelService {
         Member member = memberRepository.findById(memberId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid authentication context."));
 
-        if (request.type() != NotificationChannelType.EMAIL) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Only EMAIL notification channel is supported in MVP.");
-        }
+        validateTarget(request.type(), request.target());
 
         NotificationChannel channel = new NotificationChannel(
                 member,
@@ -63,6 +66,7 @@ public class NotificationChannelService {
             NotificationChannelUpdateRequest request
     ) {
         NotificationChannel channel = findOwnedChannel(publicId, memberId);
+        validateTarget(channel.getType(), request.target());
         channel.updateTarget(request.target());
         channel.enable();
         return NotificationChannelResponse.from(channel);
@@ -77,5 +81,30 @@ public class NotificationChannelService {
     private NotificationChannel findOwnedChannel(UUID publicId, Long memberId) {
         return channelRepository.findByPublicIdAndMemberId(publicId, memberId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Notification channel not found."));
+    }
+
+    private void validateTarget(NotificationChannelType type, String target) {
+        switch (type) {
+            case EMAIL -> validateEmailTarget(target);
+            case SLACK, DISCORD -> validateWebhookUrl(target, type);
+        }
+    }
+
+    private void validateEmailTarget(String target) {
+        if (!SIMPLE_EMAIL_PATTERN.matcher(target).matches()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid email notification target.");
+        }
+    }
+
+    private void validateWebhookUrl(String target, NotificationChannelType type) {
+        try {
+            URI uri = new URI(target);
+            String scheme = uri.getScheme();
+            if (!("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme)) || uri.getHost() == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid " + type + " webhook URL.");
+            }
+        } catch (URISyntaxException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid " + type + " webhook URL.");
+        }
     }
 }
