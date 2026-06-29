@@ -80,7 +80,7 @@ class NotificationHistoryQueryServiceTest {
         when(historyRepository.findAllByChannelMemberId(member.getId(), pageable))
                 .thenReturn(new PageImpl<>(List.of(history), pageable, 1));
 
-        var responses = historyQueryService.getHistories(member.getId(), pageable);
+        var responses = historyQueryService.getHistories(member.getId(), null, pageable);
 
         assertThat(responses.content()).hasSize(1);
         assertThat(responses.page()).isZero();
@@ -100,5 +100,19 @@ class NotificationHistoryQueryServiceTest {
         assertThat(responses.content().get(0).manualResend()).isFalse();
         assertThat(responses.content().get(0).resendOfHistoryId()).isNull();
         assertThat(responses.content().get(0).errorMessage()).isEqualTo("Failed to call [redacted-url]");
+    }
+
+    @Test
+    void getHistoriesCanFilterByStatus() {
+        Long memberId = 1L;
+        PageRequest pageable = PageRequest.of(0, 20);
+
+        when(historyRepository.findAllByChannelMemberIdAndStatus(memberId, NotificationStatus.FAILED, pageable))
+                .thenReturn(new PageImpl<>(List.of(), pageable, 0));
+
+        var responses = historyQueryService.getHistories(memberId, NotificationStatus.FAILED, pageable);
+
+        assertThat(responses.content()).isEmpty();
+        assertThat(responses.totalElements()).isZero();
     }
 }

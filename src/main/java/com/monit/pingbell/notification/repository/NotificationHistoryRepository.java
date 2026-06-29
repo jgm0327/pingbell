@@ -28,6 +28,13 @@ public interface NotificationHistoryRepository extends JpaRepository<Notificatio
     Page<NotificationHistory> findAllByChannelMemberId(Long memberId, Pageable pageable);
 
     @EntityGraph(attributePaths = {"incident", "incident.monitor", "channel"})
+    Page<NotificationHistory> findAllByChannelMemberIdAndStatus(
+            Long memberId,
+            NotificationStatus status,
+            Pageable pageable
+    );
+
+    @EntityGraph(attributePaths = {"incident", "incident.monitor", "channel"})
     Optional<NotificationHistory> findByIdAndChannelMemberId(Long id, Long memberId);
 
     long countByChannelMemberIdAndStatusAndCreatedAtGreaterThanEqual(
