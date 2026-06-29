@@ -3,6 +3,7 @@ package com.monit.pingbell.notification.repository;
 import com.monit.pingbell.incident.domain.Incident;
 import com.monit.pingbell.notification.domain.NotificationChannel;
 import com.monit.pingbell.notification.domain.NotificationHistory;
+import com.monit.pingbell.notification.type.NotificationStatus;
 import com.monit.pingbell.notification.type.NotificationType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -28,6 +29,12 @@ public interface NotificationHistoryRepository extends JpaRepository<Notificatio
 
     @EntityGraph(attributePaths = {"incident", "incident.monitor", "channel"})
     Optional<NotificationHistory> findByIdAndChannelMemberId(Long id, Long memberId);
+
+    long countByChannelMemberIdAndStatusAndCreatedAtGreaterThanEqual(
+            Long memberId,
+            NotificationStatus status,
+            LocalDateTime since
+    );
 
     @EntityGraph(attributePaths = {"incident", "incident.monitor", "channel"})
     @Query("""

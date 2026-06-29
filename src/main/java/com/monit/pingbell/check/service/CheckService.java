@@ -7,6 +7,7 @@ import com.monit.pingbell.check.repository.CheckResultRepository;
 import com.monit.pingbell.incident.domain.Incident;
 import com.monit.pingbell.incident.domain.IncidentStatus;
 import com.monit.pingbell.incident.repository.IncidentRepository;
+import com.monit.pingbell.global.observability.PingbellMetrics;
 import com.monit.pingbell.monitor.domain.Monitor;
 import com.monit.pingbell.monitor.domain.MonitorStatus;
 import com.monit.pingbell.monitor.repository.MonitorRepository;
@@ -29,6 +30,7 @@ public class CheckService {
     private final CheckResultRepository checkResultRepository;
     private final IncidentRepository incidentRepository;
     private final NotificationService notificationService;
+    private final PingbellMetrics metrics;
 
     @Transactional
     public void healthCheck(LocalDateTime now) {
@@ -38,6 +40,7 @@ public class CheckService {
         for (Monitor monitor : monitors) {
             CheckResult checkResult = executeOnce(monitor);
             checkResultRepository.save(checkResult);
+            metrics.recordHealthCheck(checkResult.getStatus(), checkResult.getHttpStatus(), checkResult.getResponseTimeMs());
             if (checkResult.isSuccess()) {
                 monitor.recordSuccess();
 
@@ -48,6 +51,7 @@ public class CheckService {
 
                     incident.resolve(now);
                     monitor.recover();
+                    metrics.recordIncidentResolved();
                     notifyIncidentResolved(incident, now);
                 }
             } else {
@@ -61,6 +65,7 @@ public class CheckService {
                             .monitor(monitor)
                             .build());
                     monitor.markDown();
+                    metrics.recordIncidentOpened();
                     notifyIncidentOpened(incident, now);
                 }
             }

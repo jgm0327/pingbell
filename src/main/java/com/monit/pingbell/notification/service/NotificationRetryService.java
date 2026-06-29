@@ -1,5 +1,6 @@
 package com.monit.pingbell.notification.service;
 
+import com.monit.pingbell.global.observability.PingbellMetrics;
 import com.monit.pingbell.notification.domain.NotificationChannel;
 import com.monit.pingbell.notification.domain.NotificationHistory;
 import com.monit.pingbell.notification.repository.NotificationHistoryRepository;
@@ -21,6 +22,7 @@ public class NotificationRetryService {
     private final List<NotificationSender> senders;
     private final NotificationFailureClassifier failureClassifier;
     private final NotificationMessageFactory messageFactory;
+    private final PingbellMetrics metrics;
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void retryDueHistories(LocalDateTime now) {
@@ -34,6 +36,7 @@ public class NotificationRetryService {
         NotificationChannel channel = history.getChannel();
         if (!channel.isEnabled()) {
             history.markFailed("Notification channel is disabled.", now);
+            recordRetryMetrics(history);
             return;
         }
 
@@ -43,14 +46,31 @@ public class NotificationRetryService {
             NotificationSender sender = findSender(channel.getType());
             sender.send(channel, messageFactory.create(history.getIncident(), history.getNotificationType()));
             history.markSent(now);
+            recordRetryMetrics(history);
         } catch (Exception e) {
             NotificationFailureResult failure = failureClassifier.classify(e);
             if (failure.retryable() && history.getRetryCount() < history.getMaxRetryCount()) {
                 history.markRetryPending(failure.errorMessage(), now, nextRetryAt(history, now));
+                recordRetryMetrics(history);
                 return;
             }
             history.markFailed(failure.errorMessage(), now);
+            recordRetryMetrics(history);
         }
+    }
+
+    private void recordRetryMetrics(NotificationHistory history) {
+        metrics.recordNotificationRetryAttempt(
+                history.getChannel().getType(),
+                history.getNotificationType(),
+                history.getStatus()
+        );
+        metrics.recordNotificationDelivery(
+                history.getChannel().getType(),
+                history.getNotificationType(),
+                history.getStatus(),
+                history.isManualResend()
+        );
     }
 
     private NotificationSender findSender(NotificationChannelType type) {

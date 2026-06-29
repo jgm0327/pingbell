@@ -1,5 +1,6 @@
 package com.monit.pingbell.notification.service;
 
+import com.monit.pingbell.global.observability.PingbellMetrics;
 import com.monit.pingbell.notification.domain.NotificationChannel;
 import com.monit.pingbell.notification.domain.NotificationHistory;
 import com.monit.pingbell.notification.dto.NotificationHistoryResponse;
@@ -23,6 +24,7 @@ public class NotificationHistoryResendService {
     private final List<NotificationSender> senders;
     private final NotificationFailureClassifier failureClassifier;
     private final NotificationMessageFactory messageFactory;
+    private final PingbellMetrics metrics;
 
     @Transactional
     public NotificationHistoryResponse resend(Long memberId, Long historyId, LocalDateTime now) {
@@ -58,13 +60,16 @@ public class NotificationHistoryResendService {
             NotificationSender sender = findSender(channel.getType());
             sender.send(channel, messageFactory.create(history.getIncident(), history.getNotificationType()));
             history.markSent(now);
+            metrics.recordNotificationDelivery(channel.getType(), history.getNotificationType(), history.getStatus(), history.isManualResend());
         } catch (Exception e) {
             NotificationFailureResult failure = failureClassifier.classify(e);
             if (failure.retryable()) {
                 history.markRetryPending(failure.errorMessage(), now, nextRetryAt(history, now));
+                metrics.recordNotificationDelivery(history.getChannel().getType(), history.getNotificationType(), history.getStatus(), history.isManualResend());
                 return;
             }
             history.markFailed(failure.errorMessage(), now);
+            metrics.recordNotificationDelivery(history.getChannel().getType(), history.getNotificationType(), history.getStatus(), history.isManualResend());
         }
     }
 

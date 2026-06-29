@@ -43,3 +43,9 @@ jwt:
 pingbell:
   security:
     notification-target-key: ${NOTIFICATION_TARGET_ENCRYPTION_KEY:${JWT_SECRET:}}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,metrics

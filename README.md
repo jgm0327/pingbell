@@ -16,6 +16,17 @@ Pingbell은 개인 개발자용 서버 헬스체크 및 장애 알림 서비스�
 - `docs/release-notes/mvp-1.md`
 - `docs/release-notes/mvp-2.md`
 
+운영 설계 문서:
+
+아래 문서는 현재 구현된 기능과 별도로, 추후 Kafka / Worker / DLQ / 관측성 도입 전에 책임 경계와 운영 기준을 정리한 설계 문서다. 현재 런타임에 Kafka, 별도 Worker, DLQ, Prometheus / Grafana가 구현되어 있다는 뜻은 아니다.
+
+- `docs/event-boundary.md`: 단일 앱 안의 현재 동기 흐름과 미래 이벤트 경계
+- `docs/check-worker-design.md`: Check Worker 분리 시 책임과 idempotency 기준
+- `docs/incident-detector-design.md`: Incident Detector 분리 시 장애 판정과 상태 전이 기준
+- `docs/notification-worker-design.md`: Notification Worker 분리 시 알림 이력과 발송 요청 기준
+- `docs/dlq-reprocessing-policy.md`: retryable / non-retryable / retry exhausted와 DLQ 후보 기준
+- `docs/observability-metrics.md`: 현재 단일 앱과 미래 Worker 구조에서 볼 관측성 지표 후보
+
 ## 주요 기능
 
 ### Auth
@@ -399,7 +410,14 @@ docker exec pingbell-postgres psql -U pingbell -d pingbell -c "select version, s
 
 ## 다음 작업 후보
 
-1. MVP 완료 상태 점검과 릴리즈 노트 정리
-2. disabled 알림 채널 숨김 또는 필터 추가
-3. 모니터 수정 / 일시정지 / 삭제 UX 정리
-4. Kafka 기반 Check Worker / Notification Worker 분리 설계
+구현 후보:
+
+1. disabled 알림 채널 숨김 또는 필터 추가
+2. 모니터 수정 / 일시정지 / 삭제 UX 정리
+3. 관측성 지표 중 단일 앱에서 먼저 볼 최소 지표 구현 검토
+
+문서 / 운영 설계 후보:
+
+1. 운영 설계 기반 구현 우선순위 재정리
+2. Kafka 기반 Worker 분리 도입 시점 판단
+3. Prometheus / Grafana 도입 범위 구체화

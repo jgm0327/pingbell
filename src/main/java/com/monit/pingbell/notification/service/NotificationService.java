@@ -1,6 +1,7 @@
 package com.monit.pingbell.notification.service;
 
 import com.monit.pingbell.incident.domain.Incident;
+import com.monit.pingbell.global.observability.PingbellMetrics;
 import com.monit.pingbell.monitor.domain.Monitor;
 import com.monit.pingbell.notification.domain.NotificationChannel;
 import com.monit.pingbell.notification.domain.NotificationHistory;
@@ -25,6 +26,7 @@ public class NotificationService {
     private final List<NotificationSender> senders;
     private final NotificationFailureClassifier failureClassifier;
     private final NotificationMessageFactory messageFactory;
+    private final PingbellMetrics metrics;
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void notifyIncidentOpened(Incident incident, LocalDateTime now) {
@@ -50,6 +52,7 @@ public class NotificationService {
                 NotificationSender sender = findSender(channel.getType());
                 sender.send(channel, messageFactory.create(incident, type));
                 history.markSent(now);
+                metrics.recordNotificationDelivery(channel.getType(), type, history.getStatus(), history.isManualResend());
             } catch (Exception e) {
                 NotificationFailureResult failure = failureClassifier.classify(e);
                 if (failure.retryable()) {
@@ -57,6 +60,7 @@ public class NotificationService {
                 } else {
                     history.markFailed(failure.errorMessage(), now);
                 }
+                metrics.recordNotificationDelivery(channel.getType(), type, history.getStatus(), history.isManualResend());
             }
         }
     }

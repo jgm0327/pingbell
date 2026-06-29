@@ -1,5 +1,6 @@
 package com.monit.pingbell.notification.service;
 
+import com.monit.pingbell.global.observability.PingbellMetrics;
 import com.monit.pingbell.incident.domain.Incident;
 import com.monit.pingbell.incident.domain.IncidentStatus;
 import com.monit.pingbell.member.domain.Member;
@@ -40,6 +41,9 @@ class NotificationRetryServiceTest {
 
     @Mock
     private NotificationSender sender;
+
+    @Mock
+    private PingbellMetrics metrics;
 
     @Test
     void retryDueHistoriesMarksSentWhenRetrySucceeds() {
@@ -138,7 +142,8 @@ class NotificationRetryServiceTest {
                 historyRepository,
                 List.of(sender),
                 new NotificationFailureClassifier(),
-                new NotificationMessageFactory()
+                new NotificationMessageFactory(),
+                metrics
         );
     }
 

@@ -4,6 +4,7 @@ import com.monit.pingbell.check.client.HealthCheckClient;
 import com.monit.pingbell.check.domain.CheckResult;
 import com.monit.pingbell.check.domain.CheckStatus;
 import com.monit.pingbell.check.repository.CheckResultRepository;
+import com.monit.pingbell.global.observability.PingbellMetrics;
 import com.monit.pingbell.incident.domain.Incident;
 import com.monit.pingbell.incident.domain.IncidentStatus;
 import com.monit.pingbell.incident.repository.IncidentRepository;
@@ -47,6 +48,9 @@ class CheckServiceTest {
 
     @Mock
     private NotificationService notificationService;
+
+    @Mock
+    private PingbellMetrics metrics;
 
     @InjectMocks
     private CheckService checkService;
