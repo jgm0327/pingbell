@@ -73,22 +73,22 @@ public class CheckService {
         Integer statusCode = null;
         try {
             statusCode = healthCheckClient.check(monitor.getUrl(), monitor.getTimeoutMillis());
-            long elapsedMs = System.nanoTime() - startTime;
+            long elapsedMs = (System.nanoTime() - startTime) / 1_000_000;
 
-            CheckStatus status = classify(statusCode, null);
+            CheckStatus status = classify(statusCode, null, elapsedMs, monitor.getTimeoutMillis());
             return CheckResult.builder()
                     .httpStatus(statusCode)
-                    .responseTimeMs(elapsedMs / 1_000_000)
+                    .responseTimeMs(elapsedMs)
                     .monitor(monitor)
                     .status(status)
                     .build();
 
         } catch (Exception e) {
-            long elapsedMs = System.nanoTime() - startTime;
+            long elapsedMs = (System.nanoTime() - startTime) / 1_000_000;
 
-            CheckStatus status = classify(null, e);
+            CheckStatus status = classify(null, e, elapsedMs, monitor.getTimeoutMillis());
             return CheckResult.builder()
-                    .responseTimeMs(elapsedMs / 1_000_000)
+                    .responseTimeMs(elapsedMs)
                     .monitor(monitor)
                     .status(status)
                     .httpStatus(statusCode)
@@ -97,16 +97,21 @@ public class CheckService {
         }
     }
 
-    private CheckStatus classify(Integer statusCode, Throwable e) {
+    private CheckStatus classify(Integer statusCode, Throwable e, long responseTimeMs, int timeoutMillis) {
         if (isTimeout(e)) return CheckStatus.TIMEOUT;
         if (statusCode == null) return CheckStatus.FAILURE;
 
         HttpStatus.Series series = HttpStatus.Series.valueOf(statusCode);
 
-        return switch (series) {
-            case INFORMATIONAL, SUCCESSFUL, REDIRECTION -> CheckStatus.SUCCESS;
-            case SERVER_ERROR, CLIENT_ERROR -> CheckStatus.FAILURE;
-        };
+        if (series == HttpStatus.Series.CLIENT_ERROR || series == HttpStatus.Series.SERVER_ERROR) {
+            return CheckStatus.HTTP_ERROR;
+        }
+
+        if (responseTimeMs > timeoutMillis) {
+            return CheckStatus.SLOW_RESPONSE;
+        }
+
+        return CheckStatus.SUCCESS;
     }
 
     private boolean isTimeout(Throwable error) {

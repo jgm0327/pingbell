@@ -4,5 +4,6 @@ public enum CheckStatus {
     SUCCESS,
     FAILURE,
     TIMEOUT,
-    SLOW
+    HTTP_ERROR,
+    SLOW_RESPONSE
 }
