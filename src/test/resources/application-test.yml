@@ -21,5 +21,10 @@ jwt:
   access-token-expiration-ms: 3600000
 
 pingbell:
+  check:
+    dispatch-mode: direct
+    kafka:
+      topic:
+        health-check-requested: pingbell.health-check.requested
   security:
     notification-target-key: test-notification-target-encryption-key

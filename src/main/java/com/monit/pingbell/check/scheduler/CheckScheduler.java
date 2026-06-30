@@ -1,6 +1,6 @@
 package com.monit.pingbell.check.scheduler;
 
-import com.monit.pingbell.check.service.CheckService;
+import com.monit.pingbell.check.scheduler.dispatch.CheckDispatchService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -12,11 +12,11 @@ import java.time.LocalDateTime;
 @RequiredArgsConstructor
 public class CheckScheduler {
     private final Clock clock;
-    private final CheckService checkService;
+    private final CheckDispatchService checkDispatchService;
 
     @Scheduled(fixedDelay = 5000)
     public void check() {
         LocalDateTime now = LocalDateTime.now(clock);
-        checkService.healthCheck(now);
+        checkDispatchService.dispatch(now);
     }
 }

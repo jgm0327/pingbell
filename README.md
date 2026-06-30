@@ -146,6 +146,7 @@ Local infra:
 - Docker Compose
 - PostgreSQL 16
 - Mailpit
+- Kafka 3.9 (KRaft single broker)
 
 ## 프로젝트 구조
 
@@ -209,6 +210,11 @@ MAIL_SMTP_STARTTLS_ENABLE=false
 
 MAILPIT_SMTP_PORT=1025
 MAILPIT_WEB_PORT=8025
+
+KAFKA_PORT=9092
+KAFKA_BOOTSTRAP_SERVERS=localhost:9092
+PINGBELL_CHECK_DISPATCH_MODE=direct
+PINGBELL_KAFKA_TOPIC_HEALTH_CHECK_REQUESTED=pingbell.health-check.requested
 ```
 
 로컬 EMAIL 검증은 Mailpit 사용을 기본으로 한다. 실제 Gmail SMTP 등을 사용하려면 `.env`의 `MAIL_*` 값을 실제 SMTP 설정으로 바꾼다.
@@ -232,6 +238,23 @@ docker ps --filter name=pingbell
 - PostgreSQL: `localhost:5432`
 - Mailpit SMTP: `localhost:1025`
 - Mailpit Web UI: `http://localhost:8025`
+- Kafka: `localhost:9092`
+
+### Kafka dispatch mode
+
+기본값은 기존 동기 헬스체크 흐름을 유지하는 `direct` 모드다.
+
+```env
+PINGBELL_CHECK_DISPATCH_MODE=direct
+```
+
+Kafka 이벤트 발행 경로를 확인하려면 Kafka가 실행 중인 상태에서 다음처럼 실행한다.
+
+```powershell
+.\gradlew.bat bootRun --args="--pingbell.check.dispatch-mode=kafka"
+```
+
+`kafka` 모드에서는 scheduler가 due monitor를 조회해 `pingbell.health-check.requested` topic으로 `HealthCheckRequested` 이벤트를 발행한다. 이번 단계에는 consumer가 없으므로 kafka mode만으로 실제 URL 호출과 CheckResult 저장은 수행하지 않는다.
 
 ### 3. 백엔드 실행
 
