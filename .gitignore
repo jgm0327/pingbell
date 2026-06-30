@@ -149,6 +149,7 @@ docs/agents
 docs/status
 test-target-server
 frontend
+frontend-dev.log
 
 
 # End of https://www.toptal.com/developers/gitignore/api/windows,intellij+all,gradle

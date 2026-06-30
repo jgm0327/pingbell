@@ -146,6 +146,7 @@ Local infra:
 - Docker Compose
 - PostgreSQL 16
 - Mailpit
+- Redis 7.4
 - Kafka 3.9 (KRaft single broker)
 
 ## 프로젝트 구조
@@ -198,7 +199,13 @@ POSTGRES_USER=pingbell
 POSTGRES_PASSWORD=pingbell1234!!
 POSTGRES_PORT=5432
 
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_PASSWORD=
+
 JWT_SECRET=change-this-to-a-long-random-secret
+JWT_REFRESH_TOKEN_EXPIRATION_MS=1209600000
+JWT_REMEMBER_ME_REFRESH_TOKEN_EXPIRATION_MS=2592000000
 NOTIFICATION_TARGET_ENCRYPTION_KEY=change-this-to-a-long-random-notification-target-key
 
 MAIL_HOST=localhost
@@ -237,6 +244,7 @@ docker ps --filter name=pingbell
 접속 정보:
 
 - PostgreSQL: `localhost:5432`
+- Redis: `localhost:6379`
 - Mailpit SMTP: `localhost:1025`
 - Mailpit Web UI: `http://localhost:8025`
 - Kafka: `localhost:9092`
@@ -326,6 +334,8 @@ OAuth 기반 연동은 아직 지원하지 않는다.
 | --- | --- | --- |
 | POST | `/api/auth/signup` | 회원가입 |
 | POST | `/api/auth/login` | 로그인 |
+| POST | `/api/auth/refresh` | access token refresh |
+| POST | `/api/auth/logout` | refresh token revoke |
 
 ### Monitor
 

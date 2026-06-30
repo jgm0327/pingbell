@@ -26,6 +26,21 @@ services:
       - "${MAILPIT_WEB_PORT:-8025}:8025"
     restart: unless-stopped
 
+  redis:
+    image: redis:7.4-alpine
+    container_name: pingbell-redis
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
   kafka:
     image: apache/kafka:3.9.1
     container_name: pingbell-kafka
@@ -49,3 +64,4 @@ services:
 
 volumes:
   postgres-data:
+  redis-data:
