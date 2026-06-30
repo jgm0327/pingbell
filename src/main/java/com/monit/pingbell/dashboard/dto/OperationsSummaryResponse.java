@@ -1,13 +1,15 @@
 package com.monit.pingbell.dashboard.dto;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 public record OperationsSummaryResponse(
         int windowHours,
         LocalDateTime since,
         HealthCheckSummary healthCheck,
         IncidentSummary incident,
-        NotificationSummary notification
+        NotificationSummary notification,
+        List<HealthCheckTrendPoint> healthCheckTrend
 ) {
 
     public record HealthCheckSummary(
@@ -29,6 +31,15 @@ public record OperationsSummaryResponse(
             long sentCount,
             long failedCount,
             long retryPendingCount
+    ) {
+    }
+
+    public record HealthCheckTrendPoint(
+            LocalDateTime bucketStart,
+            long successCount,
+            long failureCount,
+            long totalCount,
+            long averageResponseTimeMs
     ) {
     }
 }

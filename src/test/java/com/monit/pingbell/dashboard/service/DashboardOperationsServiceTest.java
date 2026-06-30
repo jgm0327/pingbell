@@ -2,6 +2,7 @@ package com.monit.pingbell.dashboard.service;
 
 import com.monit.pingbell.check.domain.CheckStatus;
 import com.monit.pingbell.check.repository.CheckResultRepository;
+import com.monit.pingbell.dashboard.dto.HealthCheckTrendRawPoint;
 import com.monit.pingbell.incident.domain.IncidentStatus;
 import com.monit.pingbell.incident.repository.IncidentRepository;
 import com.monit.pingbell.notification.repository.NotificationHistoryRepository;
@@ -56,6 +57,11 @@ class DashboardOperationsServiceTest {
                 .thenReturn(1L);
         when(notificationHistoryRepository.countByChannelMemberIdAndStatusAndCreatedAtGreaterThanEqual(memberId, NotificationStatus.RETRY_PENDING, since))
                 .thenReturn(2L);
+        when(checkResultRepository.findHourlyTrendByMemberId(memberId, LocalDateTime.of(2026, 6, 28, 13, 0), now.plusNanos(1)))
+                .thenReturn(List.of(
+                        new HealthCheckTrendRawPoint(2026, 6, 28, 13, 2L, 1L, 120.4),
+                        new HealthCheckTrendRawPoint(2026, 6, 29, 12, 3L, 0L, 80.0)
+                ));
 
         var response = dashboardOperationsService.getOperationsSummary(memberId, now);
 
@@ -71,6 +77,15 @@ class DashboardOperationsServiceTest {
         assertThat(response.notification().sentCount()).isEqualTo(5L);
         assertThat(response.notification().failedCount()).isEqualTo(1L);
         assertThat(response.notification().retryPendingCount()).isEqualTo(2L);
+        assertThat(response.healthCheckTrend()).hasSize(24);
+        assertThat(response.healthCheckTrend().getFirst().bucketStart()).isEqualTo(LocalDateTime.of(2026, 6, 28, 13, 0));
+        assertThat(response.healthCheckTrend().getFirst().successCount()).isEqualTo(2L);
+        assertThat(response.healthCheckTrend().getFirst().failureCount()).isEqualTo(1L);
+        assertThat(response.healthCheckTrend().getFirst().totalCount()).isEqualTo(3L);
+        assertThat(response.healthCheckTrend().getFirst().averageResponseTimeMs()).isEqualTo(120L);
+        assertThat(response.healthCheckTrend().get(1).totalCount()).isZero();
+        assertThat(response.healthCheckTrend().getLast().bucketStart()).isEqualTo(LocalDateTime.of(2026, 6, 29, 12, 0));
+        assertThat(response.healthCheckTrend().getLast().averageResponseTimeMs()).isEqualTo(80L);
 
         verify(checkResultRepository).countByMonitorMemberIdAndStatusAndCreatedAtGreaterThanEqual(memberId, CheckStatus.SUCCESS, since);
     }
