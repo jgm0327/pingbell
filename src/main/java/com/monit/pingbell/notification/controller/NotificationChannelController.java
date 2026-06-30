@@ -3,8 +3,10 @@ package com.monit.pingbell.notification.controller;
 import com.monit.pingbell.global.security.auth.AuthenticatedMember;
 import com.monit.pingbell.notification.dto.NotificationChannelCreateRequest;
 import com.monit.pingbell.notification.dto.NotificationChannelResponse;
+import com.monit.pingbell.notification.dto.NotificationChannelTestSendResponse;
 import com.monit.pingbell.notification.dto.NotificationChannelUpdateRequest;
 import com.monit.pingbell.notification.service.NotificationChannelService;
+import com.monit.pingbell.notification.service.NotificationChannelTestSendService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -28,6 +30,7 @@ import java.util.UUID;
 public class NotificationChannelController {
 
     private final NotificationChannelService channelService;
+    private final NotificationChannelTestSendService testSendService;
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
@@ -50,6 +53,14 @@ public class NotificationChannelController {
             @Valid @RequestBody NotificationChannelUpdateRequest request
     ) {
         return channelService.updateChannel(member.id(), publicId, request);
+    }
+
+    @PostMapping("/{publicId}/test-send")
+    public NotificationChannelTestSendResponse sendTest(
+            @AuthenticationPrincipal AuthenticatedMember member,
+            @PathVariable UUID publicId
+    ) {
+        return testSendService.sendTest(member.id(), publicId);
     }
 
     @DeleteMapping("/{publicId}")
