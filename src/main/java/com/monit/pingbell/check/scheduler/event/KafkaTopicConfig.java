@@ -20,4 +20,14 @@ public class KafkaTopicConfig {
                 .replicas(1)
                 .build();
     }
+
+    @Bean
+    public NewTopic healthCheckCompletedTopic(
+            @Value("${pingbell.check.kafka.topic.health-check-completed}") String topicName
+    ) {
+        return TopicBuilder.name(topicName)
+                .partitions(1)
+                .replicas(1)
+                .build();
+    }
 }

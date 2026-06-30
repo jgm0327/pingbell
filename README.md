@@ -223,6 +223,7 @@ KAFKA_BOOTSTRAP_SERVERS=localhost:9092
 PINGBELL_CHECK_DISPATCH_MODE=direct
 PINGBELL_KAFKA_CONSUMER_GROUP_ID=pingbell-check-worker
 PINGBELL_KAFKA_TOPIC_HEALTH_CHECK_REQUESTED=pingbell.health-check.requested
+PINGBELL_KAFKA_TOPIC_HEALTH_CHECK_COMPLETED=pingbell.health-check.completed
 ```
 
 로컬 EMAIL 검증은 Mailpit 사용을 기본으로 한다. 실제 Gmail SMTP 등을 사용하려면 `.env`의 `MAIL_*` 값을 실제 SMTP 설정으로 바꾼다.
@@ -270,6 +271,16 @@ consumer group id는 다음 환경변수로 변경할 수 있다.
 ```env
 PINGBELL_KAFKA_CONSUMER_GROUP_ID=pingbell-check-worker
 ```
+
+`HealthCheckRequested` consumer가 check result 저장까지 완료하면 `pingbell.health-check.completed` topic으로 `HealthCheckCompleted` 이벤트를 발행한다. completed payload에는 `eventId`, `requestEventId`, `monitorId`, `memberId`, `checkResultId`, `status`, `httpStatus`, `responseTimeMs`, `errorMessage`, `checkedAt`만 포함한다. monitor URL, email, notification target, secret은 Kafka payload에 넣지 않는다.
+
+completed topic 이름은 다음 환경변수로 바꿀 수 있다.
+
+```env
+PINGBELL_KAFKA_TOPIC_HEALTH_CHECK_COMPLETED=pingbell.health-check.completed
+```
+
+completed 이벤트 발행 실패 시 consumer는 예외를 다시 던진다. 다만 check result 저장과 `nextCheckAt` 갱신은 `CheckService` 트랜잭션에서 먼저 완료되므로 completed 발행 실패만으로 자동 롤백되지 않는다.
 
 ### 3. 백엔드 실행
 

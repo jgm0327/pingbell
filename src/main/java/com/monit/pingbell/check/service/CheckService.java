@@ -4,6 +4,7 @@ import com.monit.pingbell.check.client.HealthCheckClient;
 import com.monit.pingbell.check.domain.CheckResult;
 import com.monit.pingbell.check.domain.CheckStatus;
 import com.monit.pingbell.check.repository.CheckResultRepository;
+import com.monit.pingbell.check.scheduler.event.HealthCheckCompletedEvent;
 import com.monit.pingbell.check.scheduler.event.HealthCheckRequestedEvent;
 import com.monit.pingbell.incident.domain.Incident;
 import com.monit.pingbell.incident.domain.IncidentStatus;
@@ -23,6 +24,7 @@ import java.net.SocketTimeoutException;
 import java.net.http.HttpTimeoutException;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -46,32 +48,33 @@ public class CheckService {
     }
 
     @Transactional
-    public void handleRequestedCheck(HealthCheckRequestedEvent event, LocalDateTime now) {
+    public Optional<HealthCheckCompletedEvent> handleRequestedCheck(HealthCheckRequestedEvent event, LocalDateTime now) {
         Monitor monitor = monitorRepository.findByIdAndDeletedAtIsNull(event.monitorId())
                 .orElse(null);
 
         if (monitor == null) {
             log.info("Skip HealthCheckRequested event because monitor does not exist. eventId={}, monitorId={}",
                     event.eventId(), event.monitorId());
-            return;
+            return Optional.empty();
         }
 
         if (monitor.getStatus() != MonitorStatus.ACTIVE && monitor.getStatus() != MonitorStatus.DOWN) {
             log.info("Skip HealthCheckRequested event because monitor is not checkable. eventId={}, monitorId={}, status={}",
                     event.eventId(), event.monitorId(), monitor.getStatus());
-            return;
+            return Optional.empty();
         }
 
         if (monitor.getNextCheckAt().isAfter(event.scheduledAt())) {
             log.info("Skip HealthCheckRequested event because request was already processed. eventId={}, monitorId={}, scheduledAt={}, nextCheckAt={}",
                     event.eventId(), event.monitorId(), event.scheduledAt(), monitor.getNextCheckAt());
-            return;
+            return Optional.empty();
         }
 
-        checkMonitor(monitor, now);
+        CheckResult checkResult = checkMonitor(monitor, now);
+        return Optional.of(HealthCheckCompletedEvent.from(event, checkResult, now));
     }
 
-    private void checkMonitor(Monitor monitor, LocalDateTime now) {
+    private CheckResult checkMonitor(Monitor monitor, LocalDateTime now) {
         CheckResult checkResult = executeOnce(monitor);
         checkResultRepository.save(checkResult);
         metrics.recordHealthCheck(checkResult.getStatus(), checkResult.getHttpStatus(), checkResult.getResponseTimeMs());
@@ -104,6 +107,7 @@ public class CheckService {
             }
         }
         monitor.updateNextCheckedAt(now.plusSeconds(monitor.getIntervalSeconds()));
+        return checkResult;
     }
 
     private CheckResult executeOnce(Monitor monitor) {

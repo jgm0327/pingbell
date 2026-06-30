@@ -70,6 +70,7 @@ pingbell:
         group-id: ${PINGBELL_KAFKA_CONSUMER_GROUP_ID:pingbell-check-worker}
       topic:
         health-check-requested: ${PINGBELL_KAFKA_TOPIC_HEALTH_CHECK_REQUESTED:pingbell.health-check.requested}
+        health-check-completed: ${PINGBELL_KAFKA_TOPIC_HEALTH_CHECK_COMPLETED:pingbell.health-check.completed}
   security:
     notification-target-key: ${NOTIFICATION_TARGET_ENCRYPTION_KEY:${JWT_SECRET:}}
 

@@ -16,6 +16,7 @@ import java.time.LocalDateTime;
 @ConditionalOnProperty(name = "pingbell.check.dispatch-mode", havingValue = "kafka")
 public class HealthCheckRequestedConsumer {
     private final CheckService checkService;
+    private final HealthCheckCompletedProducer completedProducer;
     private final Clock clock;
 
     @KafkaListener(
@@ -24,7 +25,8 @@ public class HealthCheckRequestedConsumer {
     )
     public void consume(HealthCheckRequestedEvent event) {
         try {
-            checkService.handleRequestedCheck(event, LocalDateTime.now(clock));
+            checkService.handleRequestedCheck(event, LocalDateTime.now(clock))
+                    .ifPresent(completedProducer::publish);
         } catch (Exception e) {
             log.error("Failed to consume HealthCheckRequested event. eventId={}, monitorId={}",
                     event.eventId(), event.monitorId(), e);

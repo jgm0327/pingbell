@@ -223,12 +223,17 @@ class CheckServiceTest {
         when(monitorRepository.findByIdAndDeletedAtIsNull(10L)).thenReturn(Optional.of(monitor));
         when(healthCheckClient.check(monitor.getUrl(), monitor.getTimeoutMillis())).thenReturn(200);
 
-        checkService.handleRequestedCheck(event(10L, scheduledAt), now);
+        var completedEvent = checkService.handleRequestedCheck(event(10L, scheduledAt), now);
 
         var checkResultCaptor = org.mockito.ArgumentCaptor.forClass(CheckResult.class);
         verify(checkResultRepository).save(checkResultCaptor.capture());
         assertThat(checkResultCaptor.getValue().getStatus()).isEqualTo(CheckStatus.SUCCESS);
         assertThat(monitor.getNextCheckAt()).isEqualTo(now.plusSeconds(monitor.getIntervalSeconds()));
+        assertThat(completedEvent).isPresent();
+        assertThat(completedEvent.get().monitorId()).isEqualTo(10L);
+        assertThat(completedEvent.get().memberId()).isEqualTo(20L);
+        assertThat(completedEvent.get().status()).isEqualTo(CheckStatus.SUCCESS);
+        assertThat(completedEvent.get().checkedAt()).isEqualTo(now);
     }
 
     @Test
@@ -240,10 +245,11 @@ class CheckServiceTest {
 
         when(monitorRepository.findByIdAndDeletedAtIsNull(10L)).thenReturn(Optional.of(monitor));
 
-        checkService.handleRequestedCheck(event(10L, scheduledAt), now);
+        var completedEvent = checkService.handleRequestedCheck(event(10L, scheduledAt), now);
 
         verify(healthCheckClient, never()).check(any(), any(Integer.class));
         verify(checkResultRepository, never()).save(any(CheckResult.class));
+        assertThat(completedEvent).isEmpty();
     }
 
     @Test
@@ -255,10 +261,11 @@ class CheckServiceTest {
 
         when(monitorRepository.findByIdAndDeletedAtIsNull(10L)).thenReturn(Optional.of(monitor));
 
-        checkService.handleRequestedCheck(event(10L, scheduledAt), now);
+        var completedEvent = checkService.handleRequestedCheck(event(10L, scheduledAt), now);
 
         verify(healthCheckClient, never()).check(any(), any(Integer.class));
         verify(checkResultRepository, never()).save(any(CheckResult.class));
+        assertThat(completedEvent).isEmpty();
     }
 
     private Monitor monitor(int failureThreshold) {
@@ -274,6 +281,7 @@ class CheckServiceTest {
                 .email("user@example.com")
                 .password("password")
                 .build();
+        ReflectionTestUtils.setField(member, "id", 20L);
 
         return Monitor.builder()
                 .member(member)
