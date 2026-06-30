@@ -24,6 +24,8 @@ pingbell:
   check:
     dispatch-mode: direct
     kafka:
+      consumer:
+        group-id: pingbell-check-worker-test
       topic:
         health-check-requested: pingbell.health-check.requested
   security:

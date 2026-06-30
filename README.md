@@ -214,6 +214,7 @@ MAILPIT_WEB_PORT=8025
 KAFKA_PORT=9092
 KAFKA_BOOTSTRAP_SERVERS=localhost:9092
 PINGBELL_CHECK_DISPATCH_MODE=direct
+PINGBELL_KAFKA_CONSUMER_GROUP_ID=pingbell-check-worker
 PINGBELL_KAFKA_TOPIC_HEALTH_CHECK_REQUESTED=pingbell.health-check.requested
 ```
 
@@ -254,7 +255,13 @@ Kafka 이벤트 발행 경로를 확인하려면 Kafka가 실행 중인 상태�
 .\gradlew.bat bootRun --args="--pingbell.check.dispatch-mode=kafka"
 ```
 
-`kafka` 모드에서는 scheduler가 due monitor를 조회해 `pingbell.health-check.requested` topic으로 `HealthCheckRequested` 이벤트를 발행한다. 이번 단계에는 consumer가 없으므로 kafka mode만으로 실제 URL 호출과 CheckResult 저장은 수행하지 않는다.
+`kafka` 모드에서는 scheduler가 due monitor를 조회해 `pingbell.health-check.requested` topic으로 `HealthCheckRequested` 이벤트를 발행한다. 같은 애플리케이션 안의 consumer가 이벤트를 받아 DB에서 monitor 최신 상태를 다시 조회한 뒤, 기존 direct mode와 같은 check 수행, CheckResult 저장, incident 판정, notification 발송, nextCheckAt 갱신 흐름을 실행한다.
+
+consumer group id는 다음 환경변수로 변경할 수 있다.
+
+```env
+PINGBELL_KAFKA_CONSUMER_GROUP_ID=pingbell-check-worker
+```
 
 ### 3. 백엔드 실행
 

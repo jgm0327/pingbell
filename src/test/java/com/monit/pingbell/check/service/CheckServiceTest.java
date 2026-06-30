@@ -4,6 +4,7 @@ import com.monit.pingbell.check.client.HealthCheckClient;
 import com.monit.pingbell.check.domain.CheckResult;
 import com.monit.pingbell.check.domain.CheckStatus;
 import com.monit.pingbell.check.repository.CheckResultRepository;
+import com.monit.pingbell.check.scheduler.event.HealthCheckRequestedEvent;
 import com.monit.pingbell.global.observability.PingbellMetrics;
 import com.monit.pingbell.incident.domain.Incident;
 import com.monit.pingbell.incident.domain.IncidentStatus;
@@ -18,9 +19,12 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
@@ -209,6 +213,54 @@ class CheckServiceTest {
         assertThat(monitor.getNextCheckAt()).isEqualTo(now.plusSeconds(monitor.getIntervalSeconds()));
     }
 
+    @Test
+    void handleRequestedCheckReloadsMonitorAndRunsSingleCheck() {
+        LocalDateTime scheduledAt = LocalDateTime.of(2026, 6, 30, 10, 0);
+        LocalDateTime now = LocalDateTime.of(2026, 6, 30, 10, 1);
+        Monitor monitor = monitor(3);
+        ReflectionTestUtils.setField(monitor, "id", 10L);
+
+        when(monitorRepository.findByIdAndDeletedAtIsNull(10L)).thenReturn(Optional.of(monitor));
+        when(healthCheckClient.check(monitor.getUrl(), monitor.getTimeoutMillis())).thenReturn(200);
+
+        checkService.handleRequestedCheck(event(10L, scheduledAt), now);
+
+        var checkResultCaptor = org.mockito.ArgumentCaptor.forClass(CheckResult.class);
+        verify(checkResultRepository).save(checkResultCaptor.capture());
+        assertThat(checkResultCaptor.getValue().getStatus()).isEqualTo(CheckStatus.SUCCESS);
+        assertThat(monitor.getNextCheckAt()).isEqualTo(now.plusSeconds(monitor.getIntervalSeconds()));
+    }
+
+    @Test
+    void handleRequestedCheckSkipsWhenMonitorWasAlreadyProcessed() {
+        LocalDateTime scheduledAt = LocalDateTime.of(2026, 6, 30, 10, 0);
+        LocalDateTime now = LocalDateTime.of(2026, 6, 30, 10, 1);
+        Monitor monitor = monitor(3);
+        monitor.updateNextCheckedAt(scheduledAt.plusSeconds(30));
+
+        when(monitorRepository.findByIdAndDeletedAtIsNull(10L)).thenReturn(Optional.of(monitor));
+
+        checkService.handleRequestedCheck(event(10L, scheduledAt), now);
+
+        verify(healthCheckClient, never()).check(any(), any(Integer.class));
+        verify(checkResultRepository, never()).save(any(CheckResult.class));
+    }
+
+    @Test
+    void handleRequestedCheckSkipsWhenMonitorIsPaused() {
+        LocalDateTime scheduledAt = LocalDateTime.of(2026, 6, 30, 10, 0);
+        LocalDateTime now = LocalDateTime.of(2026, 6, 30, 10, 1);
+        Monitor monitor = monitor(3);
+        monitor.pause();
+
+        when(monitorRepository.findByIdAndDeletedAtIsNull(10L)).thenReturn(Optional.of(monitor));
+
+        checkService.handleRequestedCheck(event(10L, scheduledAt), now);
+
+        verify(healthCheckClient, never()).check(any(), any(Integer.class));
+        verify(checkResultRepository, never()).save(any(CheckResult.class));
+    }
+
     private Monitor monitor(int failureThreshold) {
         return monitor(failureThreshold, MonitorStatus.ACTIVE);
     }
@@ -234,5 +286,18 @@ class CheckServiceTest {
                 .status(status)
                 .nextCheckAt(LocalDateTime.of(2026, 6, 19, 12, 0))
                 .build();
+    }
+
+    private HealthCheckRequestedEvent event(Long monitorId, LocalDateTime scheduledAt) {
+        return new HealthCheckRequestedEvent(
+                UUID.randomUUID(),
+                scheduledAt,
+                monitorId,
+                20L,
+                1000,
+                5,
+                scheduledAt,
+                "SCHEDULER"
+        );
     }
 }
