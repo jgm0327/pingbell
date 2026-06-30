@@ -4,6 +4,7 @@ import com.monit.pingbell.check.client.HealthCheckClient;
 import com.monit.pingbell.check.domain.CheckResult;
 import com.monit.pingbell.check.domain.CheckStatus;
 import com.monit.pingbell.check.repository.CheckResultRepository;
+import com.monit.pingbell.check.scheduler.event.HealthCheckRequestedEvent;
 import com.monit.pingbell.incident.domain.Incident;
 import com.monit.pingbell.incident.domain.IncidentStatus;
 import com.monit.pingbell.incident.repository.IncidentRepository;
@@ -14,6 +15,7 @@ import com.monit.pingbell.monitor.repository.MonitorRepository;
 import com.monit.pingbell.notification.service.NotificationService;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
@@ -24,6 +26,7 @@ import java.util.List;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class CheckService {
     private final MonitorRepository monitorRepository;
     private final HealthCheckClient healthCheckClient;
@@ -38,39 +41,69 @@ public class CheckService {
                 .findAllByStatusInAndDeletedAtIsNullAndNextCheckAtLessThanEqual(List.of(MonitorStatus.ACTIVE, MonitorStatus.DOWN), now);
 
         for (Monitor monitor : monitors) {
-            CheckResult checkResult = executeOnce(monitor);
-            checkResultRepository.save(checkResult);
-            metrics.recordHealthCheck(checkResult.getStatus(), checkResult.getHttpStatus(), checkResult.getResponseTimeMs());
-            if (checkResult.isSuccess()) {
-                monitor.recordSuccess();
-
-                if (monitor.canRecover()) {
-                    Incident incident = incidentRepository
-                            .findByMonitorAndStatus(monitor, IncidentStatus.OPEN)
-                            .orElseThrow(() -> new RuntimeException("Incident not found"));
-
-                    incident.resolve(now);
-                    monitor.recover();
-                    metrics.recordIncidentResolved();
-                    notifyIncidentResolved(incident, now);
-                }
-            } else {
-                monitor.recordFailure();
-
-                if (monitor.canOpenIncident() && !incidentRepository.existsByMonitorAndStatus(monitor, IncidentStatus.OPEN)) {
-                    Incident incident = incidentRepository.save(Incident.builder()
-                            .status(IncidentStatus.OPEN)
-                            .lastErrorMessage(toIncidentReason(checkResult))
-                            .startedAt(now)
-                            .monitor(monitor)
-                            .build());
-                    monitor.markDown();
-                    metrics.recordIncidentOpened();
-                    notifyIncidentOpened(incident, now);
-                }
-            }
-            monitor.updateNextCheckedAt(now.plusSeconds(monitor.getIntervalSeconds()));
+            checkMonitor(monitor, now);
         }
+    }
+
+    @Transactional
+    public void handleRequestedCheck(HealthCheckRequestedEvent event, LocalDateTime now) {
+        Monitor monitor = monitorRepository.findByIdAndDeletedAtIsNull(event.monitorId())
+                .orElse(null);
+
+        if (monitor == null) {
+            log.info("Skip HealthCheckRequested event because monitor does not exist. eventId={}, monitorId={}",
+                    event.eventId(), event.monitorId());
+            return;
+        }
+
+        if (monitor.getStatus() != MonitorStatus.ACTIVE && monitor.getStatus() != MonitorStatus.DOWN) {
+            log.info("Skip HealthCheckRequested event because monitor is not checkable. eventId={}, monitorId={}, status={}",
+                    event.eventId(), event.monitorId(), monitor.getStatus());
+            return;
+        }
+
+        if (monitor.getNextCheckAt().isAfter(event.scheduledAt())) {
+            log.info("Skip HealthCheckRequested event because request was already processed. eventId={}, monitorId={}, scheduledAt={}, nextCheckAt={}",
+                    event.eventId(), event.monitorId(), event.scheduledAt(), monitor.getNextCheckAt());
+            return;
+        }
+
+        checkMonitor(monitor, now);
+    }
+
+    private void checkMonitor(Monitor monitor, LocalDateTime now) {
+        CheckResult checkResult = executeOnce(monitor);
+        checkResultRepository.save(checkResult);
+        metrics.recordHealthCheck(checkResult.getStatus(), checkResult.getHttpStatus(), checkResult.getResponseTimeMs());
+        if (checkResult.isSuccess()) {
+            monitor.recordSuccess();
+
+            if (monitor.canRecover()) {
+                Incident incident = incidentRepository
+                        .findByMonitorAndStatus(monitor, IncidentStatus.OPEN)
+                        .orElseThrow(() -> new RuntimeException("Incident not found"));
+
+                incident.resolve(now);
+                monitor.recover();
+                metrics.recordIncidentResolved();
+                notifyIncidentResolved(incident, now);
+            }
+        } else {
+            monitor.recordFailure();
+
+            if (monitor.canOpenIncident() && !incidentRepository.existsByMonitorAndStatus(monitor, IncidentStatus.OPEN)) {
+                Incident incident = incidentRepository.save(Incident.builder()
+                        .status(IncidentStatus.OPEN)
+                        .lastErrorMessage(toIncidentReason(checkResult))
+                        .startedAt(now)
+                        .monitor(monitor)
+                        .build());
+                monitor.markDown();
+                metrics.recordIncidentOpened();
+                notifyIncidentOpened(incident, now);
+            }
+        }
+        monitor.updateNextCheckedAt(now.plusSeconds(monitor.getIntervalSeconds()));
     }
 
     private CheckResult executeOnce(Monitor monitor) {
