@@ -22,6 +22,13 @@ public class KafkaTopicConfig {
     }
 
     @Bean
+    public NewTopic healthCheckRequestedDlqTopic(
+            @Value("${pingbell.check.kafka.topic.health-check-requested}") String topicName
+    ) {
+        return dlqTopic(topicName);
+    }
+
+    @Bean
     public NewTopic healthCheckCompletedTopic(
             @Value("${pingbell.check.kafka.topic.health-check-completed}") String topicName
     ) {
@@ -32,10 +39,31 @@ public class KafkaTopicConfig {
     }
 
     @Bean
+    public NewTopic healthCheckCompletedDlqTopic(
+            @Value("${pingbell.check.kafka.topic.health-check-completed}") String topicName
+    ) {
+        return dlqTopic(topicName);
+    }
+
+    @Bean
     public NewTopic notificationRequestedTopic(
             @Value("${pingbell.check.kafka.topic.notification-requested}") String topicName
     ) {
         return TopicBuilder.name(topicName)
+                .partitions(1)
+                .replicas(1)
+                .build();
+    }
+
+    @Bean
+    public NewTopic notificationRequestedDlqTopic(
+            @Value("${pingbell.check.kafka.topic.notification-requested}") String topicName
+    ) {
+        return dlqTopic(topicName);
+    }
+
+    private NewTopic dlqTopic(String sourceTopicName) {
+        return TopicBuilder.name(sourceTopicName + ".dlq")
                 .partitions(1)
                 .replicas(1)
                 .build();

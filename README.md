@@ -344,6 +344,53 @@ PINGBELL_NOTIFICATION_WORKER_GROUP_ID=pingbell-notification-worker
 PINGBELL_KAFKA_TOPIC_NOTIFICATION_REQUESTED=pingbell.notification.requested
 ```
 
+### Kafka consumer retry and DLQ
+
+In `kafka` dispatch mode, all Kafka listeners use the shared Spring Kafka
+error handler.
+
+- Retryable failures are retried with a fixed backoff.
+- Non-retryable failures are sent directly to DLQ.
+- Retry-exhausted messages are sent to DLQ.
+- DLQ topic names use the source topic plus `.dlq`.
+
+Default settings:
+
+```env
+PINGBELL_KAFKA_CONSUMER_RETRY_BACKOFF_INTERVAL_MS=1000
+PINGBELL_KAFKA_CONSUMER_RETRY_MAX_RETRIES=2
+```
+
+DLQ topics created by the app in `kafka` mode:
+
+```text
+pingbell.health-check.requested.dlq
+pingbell.health-check.completed.dlq
+pingbell.notification.requested.dlq
+```
+
+Current non-retryable failures:
+
+```text
+IllegalArgumentException
+ClassCastException
+NoSuchElementException
+```
+
+DLQ records keep the original event payload. Kafka payloads and DLQ payloads
+must not contain monitor URLs, notification targets, webhook URLs, email
+addresses, or secrets. The DLQ recoverer adds only minimal metadata headers:
+original topic, partition, offset, and exception class. Exception stack traces
+and exception messages are not added to DLQ headers.
+
+Manual DLQ check:
+
+```powershell
+docker compose up -d kafka
+.\gradlew.bat bootRun --args="--pingbell.check.dispatch-mode=kafka"
+docker exec -it pingbell-kafka /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic pingbell.health-check.requested.dlq --from-beginning
+```
+
 Manual check:
 
 ```powershell
