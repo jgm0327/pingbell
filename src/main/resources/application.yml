@@ -50,7 +50,7 @@ spring:
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
       properties:
-        spring.json.trusted.packages: com.monit.pingbell.check.scheduler.event
+        spring.json.trusted.packages: com.monit.pingbell.check.scheduler.event,com.monit.pingbell.notification.event
         spring.json.value.default.type: com.monit.pingbell.check.scheduler.event.HealthCheckRequestedEvent
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
@@ -71,6 +71,11 @@ pingbell:
       topic:
         health-check-requested: ${PINGBELL_KAFKA_TOPIC_HEALTH_CHECK_REQUESTED:pingbell.health-check.requested}
         health-check-completed: ${PINGBELL_KAFKA_TOPIC_HEALTH_CHECK_COMPLETED:pingbell.health-check.completed}
+        notification-requested: ${PINGBELL_KAFKA_TOPIC_NOTIFICATION_REQUESTED:pingbell.notification.requested}
+  notification:
+    kafka:
+      consumer:
+        group-id: ${PINGBELL_NOTIFICATION_WORKER_GROUP_ID:pingbell-notification-worker}
   security:
     notification-target-key: ${NOTIFICATION_TARGET_ENCRYPTION_KEY:${JWT_SECRET:}}
 

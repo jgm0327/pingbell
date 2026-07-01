@@ -30,4 +30,14 @@ public class KafkaTopicConfig {
                 .replicas(1)
                 .build();
     }
+
+    @Bean
+    public NewTopic notificationRequestedTopic(
+            @Value("${pingbell.check.kafka.topic.notification-requested}") String topicName
+    ) {
+        return TopicBuilder.name(topicName)
+                .partitions(1)
+                .replicas(1)
+                .build();
+    }
 }
