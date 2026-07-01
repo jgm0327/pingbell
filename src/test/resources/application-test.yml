@@ -24,10 +24,13 @@ jwt:
 
 pingbell:
   check:
-    dispatch-mode: direct
+    dispatch-mode: kafka
     kafka:
       consumer:
         group-id: pingbell-check-worker-test
+        retry:
+          backoff-interval-ms: 0
+          max-retries: 2
       topic:
         health-check-requested: pingbell.health-check.requested
   security:

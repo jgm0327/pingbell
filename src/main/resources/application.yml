@@ -63,6 +63,11 @@ jwt:
   remember-me-refresh-token-expiration-ms: ${JWT_REMEMBER_ME_REFRESH_TOKEN_EXPIRATION_MS:2592000000}
 
 pingbell:
+  kafka:
+    consumer:
+      retry:
+        backoff-interval-ms: ${PINGBELL_KAFKA_CONSUMER_RETRY_BACKOFF_INTERVAL_MS:1000}
+        max-retries: ${PINGBELL_KAFKA_CONSUMER_RETRY_MAX_RETRIES:2}
   check:
     dispatch-mode: ${PINGBELL_CHECK_DISPATCH_MODE:direct}
     kafka:
