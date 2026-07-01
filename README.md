@@ -199,6 +199,41 @@ POSTGRES_USER=pingbell
 POSTGRES_PASSWORD=pingbell1234!!
 POSTGRES_PORT=5432
 
+## HealthCheckCompleted Incident Detector Consumer
+
+In `kafka` dispatch mode, Pingbell now consumes
+`pingbell.health-check.completed` after the requested-check consumer saves a
+`CheckResult`.
+
+The completed consumer reloads `CheckResult` by `checkResultId` and uses that DB
+row as the source of truth for incident open / resolve decisions. Payload fields
+such as `status`, `httpStatus`, `responseTimeMs`, and `errorMessage` are treated
+as event metadata, not as the authority for incident detection. Before applying
+the result, the consumer verifies that event `monitorId` and `memberId` match the
+reloaded `CheckResult` relationship.
+
+Duplicate completed events are skipped by recording processed `checkResultId`
+values in `incident_detection_processed_check_results`. The same completed event
+must not increase monitor failure / recovery counts more than once.
+
+Manual check:
+
+```powershell
+docker compose up -d kafka
+.\gradlew.bat bootRun --args="--pingbell.check.dispatch-mode=kafka"
+```
+
+Create or wait for a due monitor, then confirm this flow:
+
+```text
+HealthCheckRequested
+-> URL check / CheckResult save
+-> HealthCheckCompleted
+-> incident detection
+```
+
+Reprocessing the same completed event with the same `checkResultId` should not
+change incident state or monitor failure / recovery counts again.
 REDIS_HOST=localhost
 REDIS_PORT=6379
 REDIS_PASSWORD=

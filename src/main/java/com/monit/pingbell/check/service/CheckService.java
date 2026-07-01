@@ -6,14 +6,11 @@ import com.monit.pingbell.check.domain.CheckStatus;
 import com.monit.pingbell.check.repository.CheckResultRepository;
 import com.monit.pingbell.check.scheduler.event.HealthCheckCompletedEvent;
 import com.monit.pingbell.check.scheduler.event.HealthCheckRequestedEvent;
-import com.monit.pingbell.incident.domain.Incident;
-import com.monit.pingbell.incident.domain.IncidentStatus;
-import com.monit.pingbell.incident.repository.IncidentRepository;
 import com.monit.pingbell.global.observability.PingbellMetrics;
+import com.monit.pingbell.incident.service.IncidentDetectionService;
 import com.monit.pingbell.monitor.domain.Monitor;
 import com.monit.pingbell.monitor.domain.MonitorStatus;
 import com.monit.pingbell.monitor.repository.MonitorRepository;
-import com.monit.pingbell.notification.service.NotificationService;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -33,8 +30,7 @@ public class CheckService {
     private final MonitorRepository monitorRepository;
     private final HealthCheckClient healthCheckClient;
     private final CheckResultRepository checkResultRepository;
-    private final IncidentRepository incidentRepository;
-    private final NotificationService notificationService;
+    private final IncidentDetectionService incidentDetectionService;
     private final PingbellMetrics metrics;
 
     @Transactional
@@ -43,7 +39,8 @@ public class CheckService {
                 .findAllByStatusInAndDeletedAtIsNullAndNextCheckAtLessThanEqual(List.of(MonitorStatus.ACTIVE, MonitorStatus.DOWN), now);
 
         for (Monitor monitor : monitors) {
-            checkMonitor(monitor, now);
+            CheckResult checkResult = checkMonitor(monitor, now);
+            incidentDetectionService.detect(checkResult, now);
         }
     }
 
@@ -78,34 +75,6 @@ public class CheckService {
         CheckResult checkResult = executeOnce(monitor);
         checkResultRepository.save(checkResult);
         metrics.recordHealthCheck(checkResult.getStatus(), checkResult.getHttpStatus(), checkResult.getResponseTimeMs());
-        if (checkResult.isSuccess()) {
-            monitor.recordSuccess();
-
-            if (monitor.canRecover()) {
-                Incident incident = incidentRepository
-                        .findByMonitorAndStatus(monitor, IncidentStatus.OPEN)
-                        .orElseThrow(() -> new RuntimeException("Incident not found"));
-
-                incident.resolve(now);
-                monitor.recover();
-                metrics.recordIncidentResolved();
-                notifyIncidentResolved(incident, now);
-            }
-        } else {
-            monitor.recordFailure();
-
-            if (monitor.canOpenIncident() && !incidentRepository.existsByMonitorAndStatus(monitor, IncidentStatus.OPEN)) {
-                Incident incident = incidentRepository.save(Incident.builder()
-                        .status(IncidentStatus.OPEN)
-                        .lastErrorMessage(toIncidentReason(checkResult))
-                        .startedAt(now)
-                        .monitor(monitor)
-                        .build());
-                monitor.markDown();
-                metrics.recordIncidentOpened();
-                notifyIncidentOpened(incident, now);
-            }
-        }
         monitor.updateNextCheckedAt(now.plusSeconds(monitor.getIntervalSeconds()));
         return checkResult;
     }
@@ -163,29 +132,4 @@ public class CheckService {
                 || error.getCause() instanceof SocketTimeoutException;
     }
 
-    private String toIncidentReason(CheckResult checkResult) {
-        if (checkResult.getErrorMessage() != null && !checkResult.getErrorMessage().isBlank()) {
-            return checkResult.getErrorMessage();
-        }
-
-        if (checkResult.getHttpStatus() != null) {
-            return "HTTP " + checkResult.getHttpStatus();
-        }
-
-        return checkResult.getStatus().name();
-    }
-
-    private void notifyIncidentOpened(Incident incident, LocalDateTime now) {
-        try {
-            notificationService.notifyIncidentOpened(incident, now);
-        } catch (Exception ignored) {
-        }
-    }
-
-    private void notifyIncidentResolved(Incident incident, LocalDateTime now) {
-        try {
-            notificationService.notifyIncidentResolved(incident, now);
-        } catch (Exception ignored) {
-        }
-    }
 }

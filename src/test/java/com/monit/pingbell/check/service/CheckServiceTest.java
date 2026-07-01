@@ -6,14 +6,11 @@ import com.monit.pingbell.check.domain.CheckStatus;
 import com.monit.pingbell.check.repository.CheckResultRepository;
 import com.monit.pingbell.check.scheduler.event.HealthCheckRequestedEvent;
 import com.monit.pingbell.global.observability.PingbellMetrics;
-import com.monit.pingbell.incident.domain.Incident;
-import com.monit.pingbell.incident.domain.IncidentStatus;
-import com.monit.pingbell.incident.repository.IncidentRepository;
+import com.monit.pingbell.incident.service.IncidentDetectionService;
 import com.monit.pingbell.member.domain.Member;
 import com.monit.pingbell.monitor.domain.Monitor;
 import com.monit.pingbell.monitor.domain.MonitorStatus;
 import com.monit.pingbell.monitor.repository.MonitorRepository;
-import com.monit.pingbell.notification.service.NotificationService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -48,10 +45,7 @@ class CheckServiceTest {
     private CheckResultRepository checkResultRepository;
 
     @Mock
-    private IncidentRepository incidentRepository;
-
-    @Mock
-    private NotificationService notificationService;
+    private IncidentDetectionService incidentDetectionService;
 
     @Mock
     private PingbellMetrics metrics;
@@ -76,7 +70,7 @@ class CheckServiceTest {
         verify(checkResultRepository).save(checkResultCaptor.capture());
         assertThat(checkResultCaptor.getValue().getStatus()).isEqualTo(CheckStatus.HTTP_ERROR);
         assertThat(checkResultCaptor.getValue().getHttpStatus()).isEqualTo(500);
-        verify(notificationService, never()).notifyIncidentOpened(any(Incident.class), any(LocalDateTime.class));
+        verify(incidentDetectionService).detect(any(CheckResult.class), eq(now));
     }
 
     @Test
@@ -99,11 +93,11 @@ class CheckServiceTest {
         verify(checkResultRepository).save(checkResultCaptor.capture());
         assertThat(checkResultCaptor.getValue().getStatus()).isEqualTo(CheckStatus.SLOW_RESPONSE);
         assertThat(checkResultCaptor.getValue().getHttpStatus()).isEqualTo(200);
-        verify(notificationService, never()).notifyIncidentOpened(any(Incident.class), any(LocalDateTime.class));
+        verify(incidentDetectionService).detect(any(CheckResult.class), eq(now));
     }
 
     @Test
-    void healthCheckNotifiesIncidentOpenedWhenFailureThresholdIsReached() {
+    void healthCheckDelegatesIncidentDetectionAfterSavingResult() {
         LocalDateTime now = LocalDateTime.of(2026, 6, 19, 12, 0);
         Monitor monitor = monitor(2);
 
@@ -112,24 +106,16 @@ class CheckServiceTest {
                 any(LocalDateTime.class)
         )).thenReturn(List.of(monitor));
         when(healthCheckClient.check(monitor.getUrl(), monitor.getTimeoutMillis())).thenReturn(500);
-        when(incidentRepository.existsByMonitorAndStatus(monitor, IncidentStatus.OPEN)).thenReturn(false);
-        when(incidentRepository.save(any(Incident.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         checkService.healthCheck(now);
-        verify(notificationService, never()).notifyIncidentOpened(any(Incident.class), any(LocalDateTime.class));
 
-        LocalDateTime incidentOpenedAt = now.plusSeconds(monitor.getIntervalSeconds());
-        checkService.healthCheck(incidentOpenedAt);
-
-        var incidentCaptor = org.mockito.ArgumentCaptor.forClass(Incident.class);
-        verify(incidentRepository).save(incidentCaptor.capture());
-        verify(notificationService).notifyIncidentOpened(incidentCaptor.getValue(), incidentOpenedAt);
-        assertThat(incidentCaptor.getValue().getStartedAt()).isEqualTo(incidentOpenedAt);
-        assertThat(incidentCaptor.getValue().getLastErrorMessage()).isEqualTo("HTTP 500");
+        var checkResultCaptor = org.mockito.ArgumentCaptor.forClass(CheckResult.class);
+        verify(checkResultRepository).save(checkResultCaptor.capture());
+        verify(incidentDetectionService).detect(checkResultCaptor.getValue(), now);
     }
 
     @Test
-    void healthCheckKeepsExceptionNameAsIncidentReasonWhenRequestFails() {
+    void healthCheckSavesExceptionNameWhenRequestFails() {
         LocalDateTime now = LocalDateTime.of(2026, 6, 19, 12, 0);
         Monitor monitor = monitor(1);
 
@@ -139,16 +125,13 @@ class CheckServiceTest {
         )).thenReturn(List.of(monitor));
         when(healthCheckClient.check(monitor.getUrl(), monitor.getTimeoutMillis()))
                 .thenThrow(new IllegalStateException("connection failed"));
-        when(incidentRepository.existsByMonitorAndStatus(monitor, IncidentStatus.OPEN)).thenReturn(false);
-        when(incidentRepository.save(any(Incident.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         checkService.healthCheck(now);
 
-        var incidentCaptor = org.mockito.ArgumentCaptor.forClass(Incident.class);
-        verify(incidentRepository).save(incidentCaptor.capture());
-        verify(notificationService, times(1)).notifyIncidentOpened(incidentCaptor.getValue(), now);
-        assertThat(incidentCaptor.getValue().getStartedAt()).isEqualTo(now);
-        assertThat(incidentCaptor.getValue().getLastErrorMessage()).isEqualTo("IllegalStateException");
+        var checkResultCaptor = org.mockito.ArgumentCaptor.forClass(CheckResult.class);
+        verify(checkResultRepository).save(checkResultCaptor.capture());
+        assertThat(checkResultCaptor.getValue().getErrorMessage()).isEqualTo("IllegalStateException");
+        verify(incidentDetectionService, times(1)).detect(checkResultCaptor.getValue(), now);
     }
 
     @Test
@@ -164,13 +147,12 @@ class CheckServiceTest {
 
         checkService.healthCheck(now);
 
-        verify(incidentRepository, never()).save(any(Incident.class));
-        verify(notificationService, never()).notifyIncidentOpened(any(Incident.class), any(LocalDateTime.class));
+        verify(incidentDetectionService).detect(any(CheckResult.class), eq(now));
         assertThat(monitor.getStatus()).isEqualTo(MonitorStatus.DOWN);
     }
 
     @Test
-    void healthCheckDoesNotSendDuplicateOpenNotificationWhenOpenIncidentExists() {
+    void healthCheckKeepsMonitorStatusChangesOwnedByIncidentDetectionService() {
         LocalDateTime now = LocalDateTime.of(2026, 6, 23, 12, 0);
         Monitor monitor = monitor(1);
 
@@ -179,18 +161,16 @@ class CheckServiceTest {
                 any(LocalDateTime.class)
         )).thenReturn(List.of(monitor));
         when(healthCheckClient.check(monitor.getUrl(), monitor.getTimeoutMillis())).thenReturn(500);
-        when(incidentRepository.existsByMonitorAndStatus(monitor, IncidentStatus.OPEN)).thenReturn(true);
 
         checkService.healthCheck(now);
 
-        verify(incidentRepository, never()).save(any(Incident.class));
-        verify(notificationService, never()).notifyIncidentOpened(any(Incident.class), any(LocalDateTime.class));
+        verify(incidentDetectionService).detect(any(CheckResult.class), eq(now));
         assertThat(monitor.getStatus()).isEqualTo(MonitorStatus.ACTIVE);
         assertThat(monitor.getNextCheckAt()).isEqualTo(now.plusSeconds(monitor.getIntervalSeconds()));
     }
 
     @Test
-    void healthCheckContinuesWhenIncidentOpenNotificationFails() {
+    void healthCheckPropagatesIncidentDetectionFailure() {
         LocalDateTime now = LocalDateTime.of(2026, 6, 23, 12, 0);
         Monitor monitor = monitor(1);
 
@@ -199,17 +179,15 @@ class CheckServiceTest {
                 any(LocalDateTime.class)
         )).thenReturn(List.of(monitor));
         when(healthCheckClient.check(monitor.getUrl(), monitor.getTimeoutMillis())).thenReturn(500);
-        when(incidentRepository.existsByMonitorAndStatus(monitor, IncidentStatus.OPEN)).thenReturn(false);
-        when(incidentRepository.save(any(Incident.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        org.mockito.Mockito.doThrow(new IllegalStateException("notification failed"))
-                .when(notificationService)
-                .notifyIncidentOpened(any(Incident.class), eq(now));
+        org.mockito.Mockito.doThrow(new IllegalStateException("detection failed"))
+                .when(incidentDetectionService)
+                .detect(any(CheckResult.class), eq(now));
 
-        assertThatCode(() -> checkService.healthCheck(now)).doesNotThrowAnyException();
+        assertThatCode(() -> checkService.healthCheck(now))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("detection failed");
 
         verify(checkResultRepository).save(any());
-        verify(notificationService).notifyIncidentOpened(any(Incident.class), eq(now));
-        assertThat(monitor.getStatus()).isEqualTo(MonitorStatus.DOWN);
         assertThat(monitor.getNextCheckAt()).isEqualTo(now.plusSeconds(monitor.getIntervalSeconds()));
     }
 
