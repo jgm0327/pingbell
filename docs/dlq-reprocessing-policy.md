@@ -357,9 +357,9 @@ manualReprocessable
 
 ### 12.1 현재 수동 재처리 구현 판단
 
-현재 구현은 DLQ dry-run command까지만 제공한다.
+현재 구현은 DLQ dry-run command와 단일 record 실제 재처리 command를 제공한다.
 
-dry-run command는 DLQ record payload를 읽고 DB source of truth 기준으로 재처리 가능 여부만 판정한다. 실제 DLQ record re-publish, service 재호출, 자동 재처리 스케줄러는 구현하지 않는다.
+dry-run command는 DLQ record payload를 읽고 DB source of truth 기준으로 재처리 가능 여부만 판정한다. 실제 재처리 command는 dry-run 결과가 `REPROCESSABLE`이고 `--confirm-reprocess=true`가 명시된 단일 record만 source topic으로 다시 publish한다. service 재호출, 자동 재처리 스케줄러, batch 재처리는 구현하지 않는다.
 
 이유:
 
@@ -367,9 +367,9 @@ dry-run command는 DLQ record payload를 읽고 DB source of truth 기준으로 
 - 재처리 가능 여부는 payload 단독이 아니라 현재 DB 상태를 다시 조회해서 판단해야 한다.
 - 잘못된 재처리 command는 이미 처리된 event를 다시 반영하거나, 오래된 event로 현재 상태를 덮어쓸 위험이 있다.
 - 현재 사용자 수동 재처리 요구는 `NotificationHistory` 수동 재전송 API로 먼저 충족된다.
-- 운영자용 DLQ 실제 재처리는 dry-run 검증 결과, DB 상태 확인, idempotency 확인을 먼저 통과한 뒤 별도 작은 이슈로 구현하는 편이 안전하다.
+- 운영자용 DLQ 실제 재처리는 dry-run 검증 결과, DB 상태 확인, idempotency 확인을 먼저 통과한 단일 record에 한해 수동 command로만 실행한다.
 
-따라서 현재 단계의 완료 기준은 수동 확인 절차, dry-run 판정, 재처리/폐기 기준 문서화이며, 실제 재처리 기능은 다음 이슈로 넘긴다.
+따라서 현재 단계의 완료 기준은 수동 확인 절차, dry-run 판정, 단일 record 실제 재처리, 재처리/폐기 기준 문서화다. 여러 record를 한 번에 확인하는 목록 조회와 batch dry-run은 다음 이슈로 넘긴다.
 
 ## 13. DLQ 수동 확인 절차
 
@@ -487,8 +487,6 @@ DLQ 메시지는 payload만 보고 바로 재처리하지 않는다. 반드시 �
 - 정상적인 id 관계가 유지되어 있으면 DB source of truth 기준으로 복구 가능하다.
 - payload에 id가 없거나 DB 관계가 깨진 경우에는 자동/수동 재처리보다 데이터 보정 또는 폐기가 우선이다.
 
-## 15. 운영자가 확인해야 할 상태
-
 ## 15. 실제 재처리 정책
 
 실제 재처리는 dry-run 결과가 `REPROCESSABLE`인 record만 대상으로 한다. `SKIP_ALREADY_PROCESSED`와 `NOT_REPROCESSABLE`은 실제 재처리 command 대상이 아니다.
@@ -585,6 +583,28 @@ DB table이 필요한 시점:
 - 실패한 record를 command가 자체 retry하지 않는다.
 - 반복 실패하면 원인을 보정한 뒤 dry-run부터 다시 실행한다.
 
+### 15.6 실제 재처리 command
+
+단일 DLQ record만 원본 source topic으로 다시 publish한다. 실행 직전에 dry-run 검증을 다시 수행하며, 결과가 `REPROCESSABLE`이 아니면 publish하지 않는다.
+
+```powershell
+.\gradlew.bat bootRun --args="--pingbell.dlq.reprocess.enabled=true --pingbell.dlq.reprocess.topic=pingbell.health-check.requested.dlq --pingbell.dlq.reprocess.partition=0 --pingbell.dlq.reprocess.offset=0 --confirm-reprocess=true"
+```
+
+출력 예시:
+
+```text
+DLQ_REPROCESS topic=pingbell.health-check.requested.dlq partition=0 offset=0 sourceTopic=pingbell.health-check.requested payloadType=HealthCheckRequestedEvent messageKey=10 status=REPROCESSABLE reason=HealthCheckRequested can be retried as a dry-run decision
+```
+
+실행 조건:
+
+- `--confirm-reprocess=true`가 있어야 한다.
+- topic은 `.dlq`로 끝나야 한다.
+- dry-run 결과가 `REPROCESSABLE`이어야 한다.
+- service 직접 호출은 하지 않는다.
+- source topic은 DLQ topic에서 `.dlq` suffix를 제거해 결정한다.
+
 ## 16. 운영자가 확인해야 할 상태
 
 운영자가 확인할 최소 상태:
@@ -634,21 +654,20 @@ DB table이 필요한 시점:
 
 ## 18. 이번 문서에서 하지 않은 일
 
-- DLQ 실제 재처리 command/API를 만들지 않았다.
 - DLQ table을 만들지 않았다.
 - 별도 Worker 애플리케이션을 만들지 않았다.
 - 자동 재처리 스케줄러를 만들지 않았다.
 - DB schema를 변경하지 않았다.
 - 운영 대시보드나 metric collector를 구현하지 않았다.
+- batch 재처리 command를 만들지 않았다.
 
 ## 19. 다음 작업
 
-다음 이슈는 `DLQ 실제 재처리 command 최소 구현`이다.
+다음 이슈는 `DLQ 목록 조회 및 batch dry-run command 추가`이다.
 
 다음 이슈에서 다룰 내용:
 
-- dry-run `REPROCESSABLE` record만 대상으로 하는 re-publish command
-- `--confirm-reprocess=true` 옵션 없이는 실행되지 않는 안전장치
-- topic / partition / offset 단일 record 처리
-- command 실행 결과 운영 로그 출력
-- 실제 재처리 후 기존 Kafka consumer retry/DLQ 테스트 유지
+- topic별 DLQ record 목록을 제한된 개수로 조회하는 command
+- 여러 DLQ record에 대해 dry-run만 batch로 실행하는 command
+- `REPROCESSABLE`, `SKIP_ALREADY_PROCESSED`, `NOT_REPROCESSABLE` count 요약 출력
+- 실제 batch reprocess는 구현하지 않고 batch dry-run까지만 제공
