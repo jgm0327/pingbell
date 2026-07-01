@@ -369,7 +369,7 @@ dry-run command는 DLQ record payload를 읽고 DB source of truth 기준으로 
 - 현재 사용자 수동 재처리 요구는 `NotificationHistory` 수동 재전송 API로 먼저 충족된다.
 - 운영자용 DLQ 실제 재처리는 dry-run 검증 결과, DB 상태 확인, idempotency 확인을 먼저 통과한 단일 record에 한해 수동 command로만 실행한다.
 
-따라서 현재 단계의 완료 기준은 수동 확인 절차, dry-run 판정, 단일 record 실제 재처리, 재처리/폐기 기준 문서화다. 여러 record를 한 번에 확인하는 목록 조회와 batch dry-run은 다음 이슈로 넘긴다.
+따라서 현재 단계의 완료 기준은 수동 확인 절차, dry-run 판정, 단일 record 실제 재처리, list 조회, batch dry-run, 재처리/폐기 기준 문서화다. 여러 record를 한 번에 실제 재처리하는 batch reprocess는 구현하지 않는다.
 
 ## 13. DLQ 수동 확인 절차
 
@@ -443,6 +443,57 @@ status 의미:
 | `REPROCESSABLE` | 현재 DB 기준으로 재처리 후보가 될 수 있다. |
 | `SKIP_ALREADY_PROCESSED` | 이미 처리됐거나 현재 상태가 더 최신이라 재처리하지 않는다. |
 | `NOT_REPROCESSABLE` | payload schema 오류, DB 관계 불일치, 삭제/일시정지 등으로 재처리하면 안 된다. |
+
+### 13.4 DLQ list command
+
+DLQ topic의 record를 제한된 개수만 조회해 topic, partition, offset, payload type, 주요 id, 읽기 가능 여부를 확인한다. 실제 재처리 가능 여부는 판단하지 않고, record를 다시 publish하지 않는다.
+
+```powershell
+.\gradlew.bat bootRun --args="--pingbell.dlq.list.enabled=true --pingbell.dlq.list.topic=pingbell.health-check.requested.dlq --pingbell.dlq.list.max-records=10"
+```
+
+출력 예시:
+
+```text
+DLQ_RECORD topic=pingbell.health-check.requested.dlq partition=0 offset=0 payloadType=HealthCheckRequestedEvent primaryIds="eventId=..., monitorId=10, memberId=1" readStatus=READABLE reason=
+DLQ_RECORD topic=pingbell.health-check.requested.dlq partition=0 offset=1 payloadType=INVALID_PAYLOAD primaryIds="" readStatus=UNREADABLE reason=Invalid DLQ payload schema. topic=pingbell.health-check.requested.dlq
+DLQ_RECORD topic=pingbell.health-check.requested.dlq partition=0 offset=2 payloadType=TOMBSTONE primaryIds="" readStatus=UNREADABLE reason=DLQ record value is null
+DLQ_LIST_SUMMARY topic=pingbell.health-check.requested.dlq requestedMax=10 returned=3
+```
+
+`readStatus=UNREADABLE`인 record는 payload를 현재 코드의 event schema로 읽을 수 없다는 뜻이다. invalid payload는 `Invalid DLQ payload schema...`, tombstone record는 `DLQ record value is null`로 표시된다.
+
+### 13.5 DLQ batch dry-run command
+
+DLQ topic의 record를 `max-records` 개수만큼 읽고 각 record에 대해 dry-run 판단만 수행한다. 이 command는 실제 reprocess를 수행하지 않고 source topic으로 publish하지 않는다.
+
+```powershell
+.\gradlew.bat bootRun --args="--pingbell.dlq.batch-dry-run.enabled=true --pingbell.dlq.batch-dry-run.topic=pingbell.health-check.requested.dlq --pingbell.dlq.batch-dry-run.max-records=10"
+```
+
+출력 예시:
+
+```text
+DLQ_BATCH_DRY_RUN topic=pingbell.health-check.requested.dlq partition=0 offset=0 payloadType=HealthCheckRequestedEvent primaryIds="eventId=..., monitorId=10, memberId=1" status=REPROCESSABLE reason=HealthCheckRequested can be retried as a dry-run decision
+DLQ_BATCH_DRY_RUN topic=pingbell.health-check.requested.dlq partition=0 offset=1 payloadType=INVALID_PAYLOAD primaryIds="" status=NOT_REPROCESSABLE reason=Invalid DLQ payload schema. topic=pingbell.health-check.requested.dlq
+DLQ_BATCH_DRY_RUN topic=pingbell.health-check.requested.dlq partition=0 offset=2 payloadType=TOMBSTONE primaryIds="" status=NOT_REPROCESSABLE reason=DLQ record value is null
+DLQ_BATCH_DRY_RUN_SUMMARY topic=pingbell.health-check.requested.dlq requestedMax=10 returned=3 REPROCESSABLE=1 SKIP_ALREADY_PROCESSED=0 NOT_REPROCESSABLE=2
+```
+
+invalid payload와 tombstone record는 batch dry-run에서 `NOT_REPROCESSABLE`로 집계된다. 이 경우 `DlqDryRunService`의 DB 기반 판단까지 가지 않고, record 읽기 단계의 오류 사유를 그대로 결과에 남긴다.
+
+### 13.6 운영 실행 순서
+
+실제 운영 또는 운영 유사 환경에서는 다음 순서를 지킨다.
+
+1. Kafka와 애플리케이션을 `kafka` dispatch mode로 실행한다.
+2. `list` command로 DLQ topic에 쌓인 record의 partition / offset / payload type / 주요 id를 확인한다.
+3. 필요하면 `batch-dry-run` command로 제한된 개수의 record를 한 번에 점검한다.
+4. 실제 재처리가 필요한 record 후보를 하나 고른 뒤 `dry-run` command를 단일 partition / offset 기준으로 다시 실행한다.
+5. dry-run 결과가 `REPROCESSABLE`이고 현재 DB 상태와 idempotency 기준을 확인한 경우에만 단일 `reprocess` command를 실행한다.
+6. `SKIP_ALREADY_PROCESSED`, `NOT_REPROCESSABLE`, invalid payload, tombstone record는 실제 reprocess 대상에서 제외한다.
+
+`max-records`는 운영자가 한 번에 검토할 수 있는 개수로 제한한다. 기본값은 10이며, 원인 분석 중에는 10에서 시작하고 필요한 경우 50 이하로만 늘린다. 큰 값을 사용하면 운영 로그가 과도하게 길어지고 오래된 record를 충분한 검토 없이 재처리 후보로 착각할 수 있다.
 
 ## 14. 재처리 가능 여부 판단
 

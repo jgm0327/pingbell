@@ -393,7 +393,7 @@ docker exec -it pingbell-kafka /opt/kafka/bin/kafka-console-consumer.sh --bootst
 docker exec -it pingbell-kafka /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic pingbell.notification.requested.dlq --from-beginning --property print.headers=true
 ```
 
-DLQ 메시지는 payload만 보고 바로 재처리하지 않는다. `docs/dlq-reprocessing-policy.md`의 재처리 가능/폐기 기준에 따라 현재 DB 상태를 다시 확인한 뒤 판단한다. 현재 단계에서는 운영자용 DLQ 재처리 command/API를 제공하지 않는다.
+DLQ 메시지는 payload만 보고 바로 재처리하지 않는다. `docs/dlq-reprocessing-policy.md`의 재처리 가능/폐기 기준에 따라 현재 DB 상태를 다시 확인한 뒤 판단한다. 현재 단계에서는 운영자용 단일 dry-run, 단일 reprocess, list, batch dry-run command를 제공하며, batch reprocess와 DLQ 운영 UI/API는 제공하지 않는다.
 
 Manual check:
 
