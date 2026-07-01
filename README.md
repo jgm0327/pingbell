@@ -257,8 +257,10 @@ KAFKA_PORT=9092
 KAFKA_BOOTSTRAP_SERVERS=localhost:9092
 PINGBELL_CHECK_DISPATCH_MODE=direct
 PINGBELL_KAFKA_CONSUMER_GROUP_ID=pingbell-check-worker
+PINGBELL_NOTIFICATION_WORKER_GROUP_ID=pingbell-notification-worker
 PINGBELL_KAFKA_TOPIC_HEALTH_CHECK_REQUESTED=pingbell.health-check.requested
 PINGBELL_KAFKA_TOPIC_HEALTH_CHECK_COMPLETED=pingbell.health-check.completed
+PINGBELL_KAFKA_TOPIC_NOTIFICATION_REQUESTED=pingbell.notification.requested
 ```
 
 로컬 EMAIL 검증은 Mailpit 사용을 기본으로 한다. 실제 Gmail SMTP 등을 사용하려면 `.env`의 `MAIL_*` 값을 실제 SMTP 설정으로 바꾼다.
@@ -316,6 +318,49 @@ PINGBELL_KAFKA_TOPIC_HEALTH_CHECK_COMPLETED=pingbell.health-check.completed
 ```
 
 completed 이벤트 발행 실패 시 consumer는 예외를 다시 던진다. 다만 check result 저장과 `nextCheckAt` 갱신은 `CheckService` 트랜잭션에서 먼저 완료되므로 completed 발행 실패만으로 자동 롤백되지 않는다.
+
+### Notification Worker consumer
+
+In `kafka` dispatch mode, incident open / resolve no longer calls the sender
+directly from the incident detection boundary. After the completed-event
+consumer applies incident detection, it publishes a `NotificationRequested`
+event to `pingbell.notification.requested`.
+
+The notification consumer reloads `Incident` from the database by `incidentId`
+and then uses the existing `NotificationService`. The database remains the
+source of truth for `Incident`, `NotificationChannel`, and
+`NotificationHistory`. Kafka payloads do not contain notification targets,
+webhook URLs, email addresses, or secrets.
+
+Duplicate notification delivery is still guarded by
+`NotificationHistoryRepository.existsByIncidentAndChannelAndNotificationType`.
+For the same incident, channel, and notification type, a second
+`NotificationRequested` event does not create or send another notification.
+
+Notification worker settings:
+
+```env
+PINGBELL_NOTIFICATION_WORKER_GROUP_ID=pingbell-notification-worker
+PINGBELL_KAFKA_TOPIC_NOTIFICATION_REQUESTED=pingbell.notification.requested
+```
+
+Manual check:
+
+```powershell
+docker compose up -d kafka
+.\gradlew.bat bootRun --args="--pingbell.check.dispatch-mode=kafka"
+```
+
+Create or wait for a due monitor, then confirm this flow:
+
+```text
+HealthCheckRequested
+-> URL check / CheckResult save
+-> HealthCheckCompleted
+-> incident detection
+-> NotificationRequested
+-> notification delivery / NotificationHistory save
+```
 
 ### 3. 백엔드 실행
 

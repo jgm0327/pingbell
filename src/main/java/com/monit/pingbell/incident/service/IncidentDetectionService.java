@@ -10,7 +10,8 @@ import com.monit.pingbell.incident.domain.IncidentStatus;
 import com.monit.pingbell.incident.repository.IncidentDetectionProcessedCheckResultRepository;
 import com.monit.pingbell.incident.repository.IncidentRepository;
 import com.monit.pingbell.monitor.domain.Monitor;
-import com.monit.pingbell.notification.service.NotificationService;
+import com.monit.pingbell.notification.service.NotificationDispatchService;
+import com.monit.pingbell.notification.type.NotificationType;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -27,7 +28,7 @@ public class IncidentDetectionService {
     private final CheckResultRepository checkResultRepository;
     private final IncidentRepository incidentRepository;
     private final IncidentDetectionProcessedCheckResultRepository processedRepository;
-    private final NotificationService notificationService;
+    private final NotificationDispatchService notificationDispatchService;
     private final PingbellMetrics metrics;
 
     @Transactional
@@ -112,14 +113,14 @@ public class IncidentDetectionService {
 
     private void notifyIncidentOpened(Incident incident, LocalDateTime now) {
         try {
-            notificationService.notifyIncidentOpened(incident, now);
+            notificationDispatchService.dispatch(incident, NotificationType.INCIDENT_OPEN, now);
         } catch (Exception ignored) {
         }
     }
 
     private void notifyIncidentResolved(Incident incident, LocalDateTime now) {
         try {
-            notificationService.notifyIncidentResolved(incident, now);
+            notificationDispatchService.dispatch(incident, NotificationType.INCIDENT_RESOLVED, now);
         } catch (Exception ignored) {
         }
     }

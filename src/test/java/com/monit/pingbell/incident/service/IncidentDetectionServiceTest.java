@@ -13,7 +13,8 @@ import com.monit.pingbell.incident.repository.IncidentRepository;
 import com.monit.pingbell.member.domain.Member;
 import com.monit.pingbell.monitor.domain.Monitor;
 import com.monit.pingbell.monitor.domain.MonitorStatus;
-import com.monit.pingbell.notification.service.NotificationService;
+import com.monit.pingbell.notification.service.NotificationDispatchService;
+import com.monit.pingbell.notification.type.NotificationType;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -45,7 +46,7 @@ class IncidentDetectionServiceTest {
     private IncidentDetectionProcessedCheckResultRepository processedRepository;
 
     @Mock
-    private NotificationService notificationService;
+    private NotificationDispatchService notificationDispatchService;
 
     @Mock
     private PingbellMetrics metrics;
@@ -74,7 +75,7 @@ class IncidentDetectionServiceTest {
         assertThat(incidentCaptor.getValue().getStartedAt()).isEqualTo(now);
         assertThat(incidentCaptor.getValue().getLastErrorMessage()).isEqualTo("HTTP 500");
         assertThat(monitor.getStatus()).isEqualTo(MonitorStatus.DOWN);
-        verify(notificationService).notifyIncidentOpened(incidentCaptor.getValue(), now);
+        verify(notificationDispatchService).dispatch(incidentCaptor.getValue(), NotificationType.INCIDENT_OPEN, now);
     }
 
     @Test
@@ -129,7 +130,7 @@ class IncidentDetectionServiceTest {
         assertThat(incident.getStatus()).isEqualTo(IncidentStatus.RESOLVED);
         assertThat(incident.getResolvedAt()).isEqualTo(now);
         assertThat(monitor.getStatus()).isEqualTo(MonitorStatus.ACTIVE);
-        verify(notificationService).notifyIncidentResolved(incident, now);
+        verify(notificationDispatchService).dispatch(incident, NotificationType.INCIDENT_RESOLVED, now);
     }
 
     private HealthCheckCompletedEvent event(Long monitorId, Long memberId, Long checkResultId) {
