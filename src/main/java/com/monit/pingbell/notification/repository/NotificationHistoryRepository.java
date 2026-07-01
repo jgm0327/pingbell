@@ -24,6 +24,8 @@ public interface NotificationHistoryRepository extends JpaRepository<Notificatio
             NotificationType notificationType
     );
 
+    boolean existsByIncidentIdAndNotificationType(Long incidentId, NotificationType notificationType);
+
     @EntityGraph(attributePaths = {"incident", "incident.monitor", "channel"})
     Page<NotificationHistory> findAllByChannelMemberId(Long memberId, Pageable pageable);
 

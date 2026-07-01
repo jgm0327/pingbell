@@ -357,7 +357,9 @@ manualReprocessable
 
 ### 12.1 현재 수동 재처리 구현 판단
 
-현재 이슈에서는 DLQ 수동 재처리 command/API를 구현하지 않는다.
+현재 구현은 DLQ dry-run command까지만 제공한다.
+
+dry-run command는 DLQ record payload를 읽고 DB source of truth 기준으로 재처리 가능 여부만 판정한다. 실제 DLQ record re-publish, service 재호출, 자동 재처리 스케줄러는 구현하지 않는다.
 
 이유:
 
@@ -365,9 +367,9 @@ manualReprocessable
 - 재처리 가능 여부는 payload 단독이 아니라 현재 DB 상태를 다시 조회해서 판단해야 한다.
 - 잘못된 재처리 command는 이미 처리된 event를 다시 반영하거나, 오래된 event로 현재 상태를 덮어쓸 위험이 있다.
 - 현재 사용자 수동 재처리 요구는 `NotificationHistory` 수동 재전송 API로 먼저 충족된다.
-- 운영자용 DLQ 재처리는 topic별 dry-run 검증, DB 상태 확인, idempotency 확인을 포함한 별도 작은 이슈로 구현하는 편이 안전하다.
+- 운영자용 DLQ 실제 재처리는 dry-run 검증 결과, DB 상태 확인, idempotency 확인을 먼저 통과한 뒤 별도 작은 이슈로 구현하는 편이 안전하다.
 
-따라서 이번 단계의 완료 기준은 수동 확인 절차와 재처리/폐기 기준 문서화이며, 실제 재처리 기능은 다음 이슈로 넘긴다.
+따라서 현재 단계의 완료 기준은 수동 확인 절차, dry-run 판정, 재처리/폐기 기준 문서화이며, 실제 재처리 기능은 다음 이슈로 넘긴다.
 
 ## 13. DLQ 수동 확인 절차
 
@@ -420,6 +422,28 @@ pingbell-dlq-exception
 | `pingbell.health-check.completed.dlq` | `eventId`, `requestEventId`, `monitorId`, `memberId`, `checkResultId` |
 | `pingbell.notification.requested.dlq` | `eventId`, `incidentId`, `monitorId`, `memberId`, `notificationType` |
 
+### 13.3 DLQ dry-run command
+
+DLQ record의 재처리 가능 여부만 확인한다. 이 command는 데이터를 변경하거나 record를 다시 publish하지 않는다.
+
+```powershell
+.\gradlew.bat bootRun --args="--pingbell.dlq.dry-run.enabled=true --pingbell.dlq.dry-run.topic=pingbell.health-check.requested.dlq --pingbell.dlq.dry-run.partition=0 --pingbell.dlq.dry-run.offset=0"
+```
+
+출력 예시:
+
+```text
+DLQ_DRY_RUN topic=pingbell.health-check.requested.dlq partition=0 offset=0 payloadType=HealthCheckRequestedEvent status=REPROCESSABLE reason=HealthCheckRequested can be retried as a dry-run decision
+```
+
+status 의미:
+
+| status | 의미 |
+| --- | --- |
+| `REPROCESSABLE` | 현재 DB 기준으로 재처리 후보가 될 수 있다. |
+| `SKIP_ALREADY_PROCESSED` | 이미 처리됐거나 현재 상태가 더 최신이라 재처리하지 않는다. |
+| `NOT_REPROCESSABLE` | payload schema 오류, DB 관계 불일치, 삭제/일시정지 등으로 재처리하면 안 된다. |
+
 ## 14. 재처리 가능 여부 판단
 
 DLQ 메시지는 payload만 보고 바로 재처리하지 않는다. 반드시 현재 DB 상태를 다시 조회한다.
@@ -465,6 +489,104 @@ DLQ 메시지는 payload만 보고 바로 재처리하지 않는다. 반드시 �
 
 ## 15. 운영자가 확인해야 할 상태
 
+## 15. 실제 재처리 정책
+
+실제 재처리는 dry-run 결과가 `REPROCESSABLE`인 record만 대상으로 한다. `SKIP_ALREADY_PROCESSED`와 `NOT_REPROCESSABLE`은 실제 재처리 command 대상이 아니다.
+
+### 15.1 공통 실행 원칙
+
+- dry-run을 먼저 실행하지 않은 record는 실제 재처리하지 않는다.
+- 실제 재처리 command는 기본적으로 disabled 상태로 둔다.
+- 실제 재처리는 `--confirm-reprocess=true` 같은 명시적 confirm 옵션이 있을 때만 실행한다.
+- 실제 재처리 command는 한 번에 하나의 topic / partition / offset만 처리한다.
+- batch 재처리는 별도 이슈에서 다룬다.
+- direct mode 동작은 변경하지 않는다.
+- 재처리 중에도 현재 DB 상태를 다시 조회한다.
+- 재처리 성공/실패 결과는 운영 로그에 남긴다.
+- monitor URL, webhook URL, email address, 복호화된 target, secret은 로그에 남기지 않는다.
+
+### 15.2 Topic별 재처리 방식
+
+| DLQ topic | 실제 재처리 방식 | 이유 |
+| --- | --- | --- |
+| `pingbell.health-check.requested.dlq` | 원본 source topic으로 re-publish 우선 | 기존 Check Worker 흐름을 그대로 타게 해 URL 호출, `CheckResult` 저장, `HealthCheckCompleted` publish 책임을 유지한다. |
+| `pingbell.health-check.completed.dlq` | 원본 source topic으로 re-publish 우선 | Incident Detector consumer가 `checkResultId` idempotency를 다시 확인하므로 기존 중복 방지 기준을 재사용한다. |
+| `pingbell.notification.requested.dlq` | 원본 source topic으로 re-publish 우선 | Notification Sender consumer가 기존 알림 발송과 `NotificationHistory` 상태 반영 흐름을 그대로 수행하게 한다. |
+
+service 직접 호출은 기본 금지한다.
+
+예외적으로 service 직접 호출을 검토할 수 있는 경우:
+
+- Kafka cluster 장애가 장기간 지속되어 re-publish 자체가 불가능하다.
+- 운영자가 같은 DB transaction 경계에서 보정 작업과 재처리를 함께 해야 한다.
+- 별도 이슈에서 service 직접 호출용 idempotency, audit log, 실패 처리 기준을 먼저 고정했다.
+
+### 15.3 Topic별 금지 조건
+
+`HealthCheckRequested` 실제 재처리 금지:
+
+- monitor가 삭제되었다.
+- monitor가 `PAUSED` 상태다.
+- monitor의 `nextCheckAt`이 event `scheduledAt`보다 이후다.
+- payload의 `monitorId`, `memberId`가 DB와 불일치한다.
+
+`HealthCheckCompleted` 실제 재처리 금지:
+
+- `checkResultId`가 존재하지 않는다.
+- `CheckResult`의 monitor 관계가 payload와 불일치한다.
+- `incident_detection_processed_check_results`에 같은 `checkResultId`가 이미 있다.
+- monitor가 삭제되었거나 `PAUSED` 상태다.
+
+`NotificationRequested` 실제 재처리 금지:
+
+- `incidentId`가 존재하지 않는다.
+- incident의 monitor/member 관계가 payload와 불일치한다.
+- 같은 incident와 `notificationType`에 대한 `NotificationHistory`가 이미 존재한다.
+- `notificationType`이 현재 코드에서 지원하지 않는 값이다.
+
+### 15.4 재처리 이력 기준
+
+현재 단계에서는 별도 DLQ table을 만들지 않는다. 실제 재처리 command를 구현할 때는 최소한 다음 값을 운영 로그에 남긴다.
+
+```text
+operation=DLQ_REPROCESS
+dryRunStatus
+topic
+partition
+offset
+payloadType
+eventId
+monitorId
+checkResultId
+incidentId
+notificationType
+result
+reason
+executedAt
+```
+
+DB table이 필요한 시점:
+
+- 같은 record의 재처리 시도 횟수를 장기간 추적해야 한다.
+- 운영자별 실행자를 저장해야 한다.
+- 여러 record를 batch로 재처리해야 한다.
+- 재처리 성공/실패 이력을 UI에서 조회해야 한다.
+
+그 전까지는 command 로그와 Kafka offset 기준으로 최소 운영한다.
+
+### 15.5 재처리 실패 처리
+
+실제 재처리 command가 실패하면 같은 command 안에서 다시 DLQ로 보내지 않는다.
+
+처리 기준:
+
+- re-publish 실패는 command 실패로 종료하고 운영 로그에 남긴다.
+- consumer가 re-published event 처리에 실패하면 기존 Kafka retry/DLQ 흐름을 따른다.
+- 실패한 record를 command가 자체 retry하지 않는다.
+- 반복 실패하면 원인을 보정한 뒤 dry-run부터 다시 실행한다.
+
+## 16. 운영자가 확인해야 할 상태
+
 운영자가 확인할 최소 상태:
 
 - DLQ event count by event type
@@ -498,7 +620,7 @@ DLQ 메시지는 payload만 보고 바로 재처리하지 않는다. 반드시 �
 - 복호화된 target
 - secret
 
-## 16. 현재 구조를 유지하는 이유
+## 17. 현재 구조를 유지하는 이유
 
 지금은 별도 Worker 앱과 DLQ 재처리 UI/API 없이 현재 단일 앱 구조를 유지한다.
 
@@ -510,22 +632,23 @@ DLQ 메시지는 payload만 보고 바로 재처리하지 않는다. 반드시 �
 - DLQ 수동 재처리는 dry-run과 idempotency 검증 없이 구현하면 위험하다.
 - 지금은 각 단계의 retryable / non-retryable 기준, secret 제외 기준, 수동 확인 절차를 먼저 고정하는 것이 더 중요하다.
 
-## 17. 이번 문서에서 하지 않은 일
+## 18. 이번 문서에서 하지 않은 일
 
-- DLQ 재처리 command/API를 만들지 않았다.
+- DLQ 실제 재처리 command/API를 만들지 않았다.
 - DLQ table을 만들지 않았다.
 - 별도 Worker 애플리케이션을 만들지 않았다.
 - 자동 재처리 스케줄러를 만들지 않았다.
 - DB schema를 변경하지 않았다.
 - 운영 대시보드나 metric collector를 구현하지 않았다.
 
-## 18. 다음 작업
+## 19. 다음 작업
 
-다음 이슈는 `DLQ 수동 재처리 command 최소 설계 및 dry-run 구현`이다.
+다음 이슈는 `DLQ 실제 재처리 command 최소 구현`이다.
 
 다음 이슈에서 다룰 내용:
 
-- DLQ record를 읽어 재처리 가능 여부만 판정하는 dry-run command
-- topic별 DB source of truth 조회 기준
-- 이미 처리된 event skip 기준
-- 실제 re-publish 또는 service 재호출은 dry-run 검증 뒤 별도 판단
+- dry-run `REPROCESSABLE` record만 대상으로 하는 re-publish command
+- `--confirm-reprocess=true` 옵션 없이는 실행되지 않는 안전장치
+- topic / partition / offset 단일 record 처리
+- command 실행 결과 운영 로그 출력
+- 실제 재처리 후 기존 Kafka consumer retry/DLQ 테스트 유지
