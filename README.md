@@ -18,13 +18,13 @@ Pingbell은 개인 개발자용 서버 헬스체크 및 장애 알림 서비스�
 
 운영 설계 문서:
 
-아래 문서는 현재 구현된 기능과 별도로, 추후 Kafka / Worker / DLQ / 관측성 도입 전에 책임 경계와 운영 기준을 정리한 설계 문서다. 현재 런타임에 Kafka, 별도 Worker, DLQ, Prometheus / Grafana가 구현되어 있다는 뜻은 아니다.
+아래 문서는 Kafka mode, Worker 분리, DLQ, 관측성 도입 전후의 책임 경계와 운영 기준을 정리한 문서다. 현재 런타임에는 단일 Spring Boot 앱 안의 Kafka mode와 최소 DLQ topic 경계가 있으며, 별도 Worker 애플리케이션과 Prometheus / Grafana는 아직 구현하지 않았다.
 
 - `docs/event-boundary.md`: 단일 앱 안의 현재 동기 흐름과 미래 이벤트 경계
 - `docs/check-worker-design.md`: Check Worker 분리 시 책임과 idempotency 기준
 - `docs/incident-detector-design.md`: Incident Detector 분리 시 장애 판정과 상태 전이 기준
 - `docs/notification-worker-design.md`: Notification Worker 분리 시 알림 이력과 발송 요청 기준
-- `docs/dlq-reprocessing-policy.md`: retryable / non-retryable / retry exhausted와 DLQ 후보 기준
+- `docs/dlq-reprocessing-policy.md`: DLQ 수동 확인 절차와 retryable / non-retryable / retry exhausted, 재처리/폐기 기준
 - `docs/observability-metrics.md`: 현재 단일 앱과 미래 Worker 구조에서 볼 관측성 지표 후보
 
 ## 주요 기능
@@ -388,8 +388,12 @@ Manual DLQ check:
 ```powershell
 docker compose up -d kafka
 .\gradlew.bat bootRun --args="--pingbell.check.dispatch-mode=kafka"
-docker exec -it pingbell-kafka /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic pingbell.health-check.requested.dlq --from-beginning
+docker exec -it pingbell-kafka /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic pingbell.health-check.requested.dlq --from-beginning --property print.headers=true
+docker exec -it pingbell-kafka /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic pingbell.health-check.completed.dlq --from-beginning --property print.headers=true
+docker exec -it pingbell-kafka /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic pingbell.notification.requested.dlq --from-beginning --property print.headers=true
 ```
+
+DLQ 메시지는 payload만 보고 바로 재처리하지 않는다. `docs/dlq-reprocessing-policy.md`의 재처리 가능/폐기 기준에 따라 현재 DB 상태를 다시 확인한 뒤 판단한다. 현재 단계에서는 운영자용 DLQ 재처리 command/API를 제공하지 않는다.
 
 Manual check:
 
@@ -579,9 +583,8 @@ docker exec pingbell-postgres psql -U pingbell -d pingbell -c "select version, s
 
 - Slack OAuth
 - Discord OAuth
-- Kafka 기반 비동기 처리
-- Check Worker / Notification Worker 분리
-- DLQ
+- 별도 Worker 애플리케이션 분리
+- DLQ 수동 재처리 UI/API
 - Prometheus / Grafana
 - Kubernetes
 - MSA 분리

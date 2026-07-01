@@ -1,28 +1,48 @@
 # Pingbell DLQ / Reprocessing Policy
 
-작성일: 2026-06-29
+작성일: 2026-07-01
 
 ## 1. 목적
 
-이 문서는 미래 Worker 분리 이후 check, incident, notification 단계에서 실패한 이벤트를 어떻게 재처리하고, 어떤 경우 DLQ 대상으로 분리할지 정책을 정리한다.
+이 문서는 Kafka mode에서 DLQ에 쌓인 메시지를 운영자가 어떻게 확인하고, 어떤 기준으로 재처리하거나 폐기할지 정리한다.
 
-이번 작업은 설계 문서 작업이다. Kafka, DLQ topic/table, message producer, message consumer, 별도 Worker 애플리케이션은 구현하지 않는다.
+현재 Pingbell은 별도 Worker 애플리케이션을 분리하지 않고, 단일 Spring Boot 앱 안에서 Kafka listener와 DLQ topic을 사용한다. 이번 문서는 로컬 Docker Compose 환경에서 확인 가능한 최소 운영 절차와 재처리 판단 기준을 고정한다.
 
 ## 2. 현재 원칙
 
-현재 Pingbell은 단일 Spring Boot 애플리케이션 구조를 유지한다.
+현재 Pingbell은 단일 Spring Boot 애플리케이션 구조를 유지하되, `PINGBELL_CHECK_DISPATCH_MODE=kafka`일 때 Kafka event flow를 사용한다.
 
 현재 원칙:
 
-- Kafka를 도입하지 않는다.
-- DLQ topic 또는 table을 만들지 않는다.
+- direct mode 동작은 변경하지 않는다.
 - 별도 Worker 애플리케이션을 만들지 않는다.
+- DLQ table 또는 운영 UI는 만들지 않는다.
+- DLQ topic은 source topic 이름 뒤에 `.dlq`를 붙인다.
+- DLQ record는 원본 Kafka event payload를 유지한다.
+- DLQ header에는 원본 topic, partition, offset, exception class만 남긴다.
+- exception stack trace, exception message, secret은 DLQ header에 남기지 않는다.
 - 외부 URL 호출 실패는 Pingbell 내부 실패가 아니라 개별 monitor의 check 실패로 기록한다.
 - 알림 발송 실패는 check 결과 저장과 incident 판정을 롤백하지 않는다.
 - 알림 실패는 `NotificationHistory` 상태로 추적한다.
 - retryable 알림 실패는 `RETRY_PENDING`으로 두고 Scheduler가 재시도한다.
 - non-retryable 알림 실패 또는 retry exhausted는 `FAILED`로 둔다.
 - 수동 재전송은 기존 실패 이력을 덮어쓰지 않고 새 이력을 만든다.
+
+현재 DLQ topic:
+
+```text
+pingbell.health-check.requested.dlq
+pingbell.health-check.completed.dlq
+pingbell.notification.requested.dlq
+```
+
+현재 consumer non-retryable exception:
+
+```text
+IllegalArgumentException
+ClassCastException
+NoSuchElementException
+```
 
 ## 3. 용어 정의
 
@@ -335,7 +355,115 @@ manualReprocessable
 - 재처리 전에 현재 DB 상태를 다시 확인한다.
 - 이미 성공 처리된 이벤트는 다시 처리하지 않는다.
 
-## 13. 운영자가 확인해야 할 상태
+### 12.1 현재 수동 재처리 구현 판단
+
+현재 이슈에서는 DLQ 수동 재처리 command/API를 구현하지 않는다.
+
+이유:
+
+- 현재 DLQ payload에는 monitor URL, notification target, webhook URL, email, secret을 넣지 않는다.
+- 재처리 가능 여부는 payload 단독이 아니라 현재 DB 상태를 다시 조회해서 판단해야 한다.
+- 잘못된 재처리 command는 이미 처리된 event를 다시 반영하거나, 오래된 event로 현재 상태를 덮어쓸 위험이 있다.
+- 현재 사용자 수동 재처리 요구는 `NotificationHistory` 수동 재전송 API로 먼저 충족된다.
+- 운영자용 DLQ 재처리는 topic별 dry-run 검증, DB 상태 확인, idempotency 확인을 포함한 별도 작은 이슈로 구현하는 편이 안전하다.
+
+따라서 이번 단계의 완료 기준은 수동 확인 절차와 재처리/폐기 기준 문서화이며, 실제 재처리 기능은 다음 이슈로 넘긴다.
+
+## 13. DLQ 수동 확인 절차
+
+### 13.1 Kafka 실행
+
+```powershell
+docker compose up -d kafka
+```
+
+Kafka mode로 애플리케이션을 실행한다.
+
+```powershell
+.\gradlew.bat bootRun --args="--pingbell.check.dispatch-mode=kafka"
+```
+
+### 13.2 Topic별 DLQ 메시지 확인
+
+`HealthCheckRequested` consumer 실패 확인:
+
+```powershell
+docker exec -it pingbell-kafka /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic pingbell.health-check.requested.dlq --from-beginning --property print.headers=true
+```
+
+`HealthCheckCompleted` consumer 실패 확인:
+
+```powershell
+docker exec -it pingbell-kafka /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic pingbell.health-check.completed.dlq --from-beginning --property print.headers=true
+```
+
+`NotificationRequested` consumer 실패 확인:
+
+```powershell
+docker exec -it pingbell-kafka /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic pingbell.notification.requested.dlq --from-beginning --property print.headers=true
+```
+
+확인할 header:
+
+```text
+pingbell-dlq-original-topic
+pingbell-dlq-original-partition
+pingbell-dlq-original-offset
+pingbell-dlq-exception
+```
+
+확인할 payload id:
+
+| DLQ topic | 확인할 id |
+| --- | --- |
+| `pingbell.health-check.requested.dlq` | `eventId`, `monitorId`, `memberId`, `scheduledAt` |
+| `pingbell.health-check.completed.dlq` | `eventId`, `requestEventId`, `monitorId`, `memberId`, `checkResultId` |
+| `pingbell.notification.requested.dlq` | `eventId`, `incidentId`, `monitorId`, `memberId`, `notificationType` |
+
+## 14. 재처리 가능 여부 판단
+
+DLQ 메시지는 payload만 보고 바로 재처리하지 않는다. 반드시 현재 DB 상태를 다시 조회한다.
+
+### 14.1 재처리해도 되는 조건
+
+- payload schema가 현재 코드와 호환된다.
+- 필수 id가 모두 존재한다.
+- payload의 `memberId`, `monitorId`, `checkResultId`, `incidentId` 관계가 DB의 현재 관계와 일치한다.
+- monitor가 삭제되지 않았고, 재처리 대상 상태가 현재 상태와 충돌하지 않는다.
+- 같은 event 또는 같은 source entity가 이미 성공 처리되지 않았다.
+- 재처리해도 idempotency 기준으로 중복 반영되지 않는다.
+- 실패 원인이 일시적 DB 장애, lock timeout, consumer 프로세스 종료, 일시적 publish 실패처럼 현재 해소된 문제다.
+
+### 14.2 폐기하거나 보정 후 처리해야 하는 조건
+
+- payload schema가 깨져 필수 id를 파싱할 수 없다.
+- payload의 id 관계가 DB와 불일치한다.
+- monitor가 이미 삭제되었다.
+- monitor가 `PAUSED` 상태이고 재처리해도 현재 운영 상태와 맞지 않는다.
+- `HealthCheckCompleted`의 `checkResultId`가 존재하지 않는다.
+- `NotificationRequested`의 `incidentId`가 존재하지 않는다.
+- 이미 같은 `checkResultId`로 incident 판정이 완료되었다.
+- 이미 같은 incident, channel, notification type의 알림 이력이 생성되었다.
+- 실패 원인이 target 복호화 실패, 지원하지 않는 channel type, 권한/설정 오류처럼 데이터 보정이 먼저 필요한 문제다.
+
+### 14.3 Payload와 DB 기준 복구 가능성
+
+현재 Kafka payload와 DLQ payload에는 secret을 넣지 않는다.
+
+| 항목 | payload 포함 여부 | 재처리 시 복구 기준 |
+| --- | --- | --- |
+| monitor URL | 포함하지 않음 | `monitorId`로 `Monitor`를 다시 조회한다. |
+| notification target | 포함하지 않음 | `memberId`와 incident 기준으로 활성 `NotificationChannel`을 다시 조회한다. |
+| webhook URL | 포함하지 않음 | 암호화된 DB target을 복호화해 사용한다. |
+| email address | 포함하지 않음 | EMAIL channel target 또는 member email 기준으로 재구성한다. |
+| secret / token | 포함하지 않음 | 환경변수와 DB 암호화 값을 사용한다. |
+
+결론:
+
+- 정상적인 id 관계가 유지되어 있으면 DB source of truth 기준으로 복구 가능하다.
+- payload에 id가 없거나 DB 관계가 깨진 경우에는 자동/수동 재처리보다 데이터 보정 또는 폐기가 우선이다.
+
+## 15. 운영자가 확인해야 할 상태
 
 운영자가 확인할 최소 상태:
 
@@ -370,36 +498,34 @@ manualReprocessable
 - 복호화된 target
 - secret
 
-## 14. 현재 구조를 유지하는 이유
+## 16. 현재 구조를 유지하는 이유
 
-지금은 Kafka와 DLQ 없이 현재 단일 앱 구조를 유지한다.
+지금은 별도 Worker 앱과 DLQ 재처리 UI/API 없이 현재 단일 앱 구조를 유지한다.
 
 이유:
 
 - 현재 MVP 기능은 단일 Spring Boot 앱에서 동작한다.
 - 알림 재시도와 수동 재전송은 이미 `NotificationHistory` 상태 기반으로 검증 가능하다.
-- Kafka와 DLQ를 먼저 도입하면 장애 판정과 알림 정책보다 운영 복잡도가 커진다.
-- DLQ는 실제 message broker 또는 outbox 구조가 생긴 뒤 구현하는 편이 자연스럽다.
-- 지금은 각 단계의 retryable / non-retryable 기준과 secret 제외 기준을 먼저 고정하는 것이 더 중요하다.
+- 별도 Worker 앱을 먼저 분리하면 장애 판정과 알림 정책보다 운영 복잡도가 커진다.
+- DLQ 수동 재처리는 dry-run과 idempotency 검증 없이 구현하면 위험하다.
+- 지금은 각 단계의 retryable / non-retryable 기준, secret 제외 기준, 수동 확인 절차를 먼저 고정하는 것이 더 중요하다.
 
-## 15. 이번 문서에서 하지 않은 일
+## 17. 이번 문서에서 하지 않은 일
 
-- Kafka 의존성을 추가하지 않았다.
-- DLQ topic 또는 DLQ table을 만들지 않았다.
-- producer / consumer 코드를 만들지 않았다.
-- retry worker를 만들지 않았다.
+- DLQ 재처리 command/API를 만들지 않았다.
+- DLQ table을 만들지 않았다.
+- 별도 Worker 애플리케이션을 만들지 않았다.
+- 자동 재처리 스케줄러를 만들지 않았다.
 - DB schema를 변경하지 않았다.
 - 운영 대시보드나 metric collector를 구현하지 않았다.
 
-## 16. 다음 작업
+## 18. 다음 작업
 
-다음 이슈는 `관측성 지표 목록 작성`이다.
+다음 이슈는 `DLQ 수동 재처리 command 최소 설계 및 dry-run 구현`이다.
 
-다음 문서에서 다룰 내용:
+다음 이슈에서 다룰 내용:
 
-- check success / failure / timeout / slow response count
-- incident open / resolved count
-- notification sent / failed / retry pending count
-- retry exhausted / DLQ 후보 count
-- p95 / p99 응답 시간 지표 후보
-- 단일 앱 구조에서 먼저 볼 최소 운영 지표
+- DLQ record를 읽어 재처리 가능 여부만 판정하는 dry-run command
+- topic별 DB source of truth 조회 기준
+- 이미 처리된 event skip 기준
+- 실제 re-publish 또는 service 재호출은 dry-run 검증 뒤 별도 판단
