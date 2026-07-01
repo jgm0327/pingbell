@@ -7,6 +7,7 @@ import com.monit.pingbell.check.scheduler.event.HealthCheckRequestedEvent;
 import com.monit.pingbell.notification.event.NotificationRequestedEvent;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.springframework.beans.factory.annotation.Value;
@@ -24,6 +25,7 @@ public class DlqRecordReader {
     private static final Duration POLL_TIMEOUT = Duration.ofSeconds(3);
 
     private final ObjectMapper objectMapper;
+    private final DlqRecordInspector recordInspector;
     private final String bootstrapServers;
     private final String healthCheckRequestedTopic;
     private final String healthCheckCompletedTopic;
@@ -31,12 +33,14 @@ public class DlqRecordReader {
 
     public DlqRecordReader(
             ObjectMapper objectMapper,
+            DlqRecordInspector recordInspector,
             @Value("${spring.kafka.bootstrap-servers}") String bootstrapServers,
             @Value("${pingbell.check.kafka.topic.health-check-requested}") String healthCheckRequestedTopic,
             @Value("${pingbell.check.kafka.topic.health-check-completed}") String healthCheckCompletedTopic,
             @Value("${pingbell.check.kafka.topic.notification-requested}") String notificationRequestedTopic
     ) {
         this.objectMapper = objectMapper;
+        this.recordInspector = recordInspector;
         this.bootstrapServers = bootstrapServers;
         this.healthCheckRequestedTopic = healthCheckRequestedTopic;
         this.healthCheckCompletedTopic = healthCheckCompletedTopic;
@@ -53,6 +57,76 @@ public class DlqRecordReader {
                     .orElseThrow(() -> new IllegalArgumentException(
                             "DLQ record not found. topic=%s, partition=%d, offset=%d".formatted(topic, partition, offset)
                     ));
+        }
+    }
+
+    public List<DlqRecordSnapshot> readList(String topic, int maxRecords) {
+        if (maxRecords < 1) {
+            throw new IllegalArgumentException("maxRecords must be greater than 0");
+        }
+
+        try (KafkaConsumer<String, String> consumer = new KafkaConsumer<>(consumerProperties())) {
+            List<TopicPartition> topicPartitions = partitions(consumer, topic);
+            consumer.assign(topicPartitions);
+            consumer.seekToBeginning(topicPartitions);
+            Map<TopicPartition, Long> endOffsets = consumer.endOffsets(topicPartitions);
+
+            return readUntilLimitOrEnd(consumer, endOffsets, maxRecords);
+        }
+    }
+
+    private List<TopicPartition> partitions(KafkaConsumer<String, String> consumer, String topic) {
+        List<PartitionInfo> partitionInfos = consumer.partitionsFor(topic);
+        if (partitionInfos == null || partitionInfos.isEmpty()) {
+            throw new IllegalArgumentException("DLQ topic has no partitions. topic=" + topic);
+        }
+        return partitionInfos.stream()
+                .map(partitionInfo -> new TopicPartition(partitionInfo.topic(), partitionInfo.partition()))
+                .toList();
+    }
+
+    private List<DlqRecordSnapshot> readUntilLimitOrEnd(
+            KafkaConsumer<String, String> consumer,
+            Map<TopicPartition, Long> endOffsets,
+            int maxRecords
+    ) {
+        List<DlqRecordSnapshot> snapshots = new java.util.ArrayList<>();
+        while (snapshots.size() < maxRecords && hasRemainingRecords(consumer, endOffsets)) {
+            var records = consumer.poll(POLL_TIMEOUT);
+            if (records.isEmpty()) {
+                break;
+            }
+            for (var record : records) {
+                if (snapshots.size() >= maxRecords) {
+                    break;
+                }
+                snapshots.add(toSnapshot(record.topic(), record.partition(), record.offset(), record.value()));
+            }
+        }
+        return snapshots;
+    }
+
+    private boolean hasRemainingRecords(KafkaConsumer<String, String> consumer, Map<TopicPartition, Long> endOffsets) {
+        return endOffsets.entrySet().stream()
+                .anyMatch(entry -> consumer.position(entry.getKey()) < entry.getValue());
+    }
+
+    private DlqRecordSnapshot toSnapshot(String topic, int partition, long offset, String value) {
+        if (value == null) {
+            return DlqRecordSnapshot.unreadable(topic, partition, offset, "TOMBSTONE", "DLQ record value is null");
+        }
+        try {
+            Object payload = deserialize(topic, value);
+            return DlqRecordSnapshot.readable(
+                    topic,
+                    partition,
+                    offset,
+                    recordInspector.payloadType(payload),
+                    recordInspector.primaryIds(payload),
+                    payload
+            );
+        } catch (RuntimeException exception) {
+            return DlqRecordSnapshot.unreadable(topic, partition, offset, "INVALID_PAYLOAD", exception.getMessage());
         }
     }
 
