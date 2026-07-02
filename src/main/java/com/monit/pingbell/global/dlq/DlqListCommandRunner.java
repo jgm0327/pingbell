@@ -36,7 +36,7 @@ public class DlqListCommandRunner implements ApplicationRunner {
                         record.payloadType(),
                         record.primaryIds(),
                         record.isReadable() ? "READABLE" : "UNREADABLE",
-                        record.readError() == null ? "" : record.readError()
+                        DlqReasonRedactor.redact(record.readError())
                 );
             }
             System.out.printf("DLQ_LIST_SUMMARY topic=%s requestedMax=%d returned=%d%n", topic, maxRecords, records.size());
@@ -46,7 +46,7 @@ public class DlqListCommandRunner implements ApplicationRunner {
                     "DLQ_LIST_SUMMARY topic=%s requestedMax=%d status=FAILED reason=%s%n",
                     topic,
                     maxRecords,
-                    exception.getMessage()
+                    DlqReasonRedactor.redact(exception.getMessage())
             );
             SpringApplication.exit(applicationContext, () -> 1);
         }
