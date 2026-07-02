@@ -44,7 +44,7 @@ public class DlqReprocessCommandRunner implements ApplicationRunner {
                     result.payloadType(),
                     result.messageKey(),
                     result.dryRunStatus(),
-                    result.reason()
+                    DlqReasonRedactor.redact(result.reason())
             );
             SpringApplication.exit(applicationContext, () -> 0);
         } catch (RuntimeException exception) {
@@ -53,7 +53,7 @@ public class DlqReprocessCommandRunner implements ApplicationRunner {
                     topic,
                     partition,
                     offset,
-                    exception.getMessage()
+                    DlqReasonRedactor.redact(exception.getMessage())
             );
             SpringApplication.exit(applicationContext, () -> 1);
         }

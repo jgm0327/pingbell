@@ -38,7 +38,7 @@ public class DlqBatchDryRunCommandRunner implements ApplicationRunner {
                         record.payloadType(),
                         record.primaryIds(),
                         result.status(),
-                        result.reason()
+                        DlqReasonRedactor.redact(result.reason())
                 );
             }
             System.out.printf(
@@ -56,7 +56,7 @@ public class DlqBatchDryRunCommandRunner implements ApplicationRunner {
                     "DLQ_BATCH_DRY_RUN_SUMMARY topic=%s requestedMax=%d status=FAILED reason=%s%n",
                     topic,
                     maxRecords,
-                    exception.getMessage()
+                    DlqReasonRedactor.redact(exception.getMessage())
             );
             SpringApplication.exit(applicationContext, () -> 1);
         }

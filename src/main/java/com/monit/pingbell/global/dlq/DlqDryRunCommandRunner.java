@@ -39,7 +39,7 @@ public class DlqDryRunCommandRunner implements ApplicationRunner {
                     offset,
                     event.getClass().getSimpleName(),
                     result.status(),
-                    result.reason()
+                    DlqReasonRedactor.redact(result.reason())
             );
             SpringApplication.exit(applicationContext, () -> 0);
         } catch (RuntimeException exception) {
@@ -49,7 +49,7 @@ public class DlqDryRunCommandRunner implements ApplicationRunner {
                     partition,
                     offset,
                     DlqDryRunStatus.NOT_REPROCESSABLE,
-                    exception.getMessage()
+                    DlqReasonRedactor.redact(exception.getMessage())
             );
             SpringApplication.exit(applicationContext, () -> 1);
         }
