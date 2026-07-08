@@ -56,6 +56,9 @@ public class DashboardOperationsService {
                 .countByChannelMemberIdAndStatusAndCreatedAtGreaterThanEqual(memberId, NotificationStatus.FAILED, since);
         long retryPendingNotificationCount = notificationHistoryRepository
                 .countByChannelMemberIdAndStatusAndCreatedAtGreaterThanEqual(memberId, NotificationStatus.RETRY_PENDING, since);
+        long channelDisabledFailureCount = notificationHistoryRepository.countChannelDisabledFailuresByChannelMemberIdAndCreatedAtGreaterThanEqual(memberId, since);
+        long sendFailedFailureCount = notificationHistoryRepository.countSendFailedFailuresByChannelMemberIdAndCreatedAtGreaterThanEqual(memberId, since);
+        long retryExhaustedFailureCount = notificationHistoryRepository.countRetryExhaustedFailuresByChannelMemberIdAndCreatedAtGreaterThanEqual(memberId, since);
         List<OperationsSummaryResponse.HealthCheckTrendPoint> healthCheckTrend = getHourlyHealthCheckTrend(memberId, now);
 
         return new OperationsSummaryResponse(
@@ -75,7 +78,12 @@ public class DashboardOperationsService {
                 new OperationsSummaryResponse.NotificationSummary(
                         sentNotificationCount,
                         failedNotificationCount,
-                        retryPendingNotificationCount
+                        retryPendingNotificationCount,
+                        new OperationsSummaryResponse.FailureTypeSummary(
+                                channelDisabledFailureCount,
+                                sendFailedFailureCount,
+                                retryExhaustedFailureCount
+                        )
                 ),
                 healthCheckTrend
         );

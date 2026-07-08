@@ -43,13 +43,21 @@ class NotificationHistoryRepositoryTest {
         NotificationHistory immediateFailure = persistHistory(incident, channel);
         immediateFailure.markFailed("immediate failure", LocalDateTime.of(2026, 7, 2, 10, 1));
 
+        NotificationHistory channelDisabledFailure = persistHistory(incident, channel);
+        channelDisabledFailure.increaseRetryCount();
+        channelDisabledFailure.increaseRetryCount();
+        channelDisabledFailure.markFailed(
+                NotificationHistory.CHANNEL_DISABLED_ERROR_MESSAGE,
+                LocalDateTime.of(2026, 7, 2, 10, 2)
+        );
+
         Member otherMember = persistMember("other@example.com");
         Incident otherIncident = persistIncident(otherMember);
         NotificationChannel otherChannel = persistChannel(otherMember);
         NotificationHistory otherMemberRetryExhaustedFailure = persistHistory(otherIncident, otherChannel);
         otherMemberRetryExhaustedFailure.increaseRetryCount();
         otherMemberRetryExhaustedFailure.increaseRetryCount();
-        otherMemberRetryExhaustedFailure.markFailed("other retry exhausted", LocalDateTime.of(2026, 7, 2, 10, 2));
+        otherMemberRetryExhaustedFailure.markFailed("other retry exhausted", LocalDateTime.of(2026, 7, 2, 10, 3));
 
         entityManager.flush();
         entityManager.clear();

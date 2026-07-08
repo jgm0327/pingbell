@@ -57,6 +57,12 @@ class DashboardOperationsServiceTest {
                 .thenReturn(1L);
         when(notificationHistoryRepository.countByChannelMemberIdAndStatusAndCreatedAtGreaterThanEqual(memberId, NotificationStatus.RETRY_PENDING, since))
                 .thenReturn(2L);
+        when(notificationHistoryRepository.countChannelDisabledFailuresByChannelMemberIdAndCreatedAtGreaterThanEqual(memberId, since))
+                .thenReturn(3L);
+        when(notificationHistoryRepository.countSendFailedFailuresByChannelMemberIdAndCreatedAtGreaterThanEqual(memberId, since))
+                .thenReturn(4L);
+        when(notificationHistoryRepository.countRetryExhaustedFailuresByChannelMemberIdAndCreatedAtGreaterThanEqual(memberId, since))
+                .thenReturn(5L);
         when(checkResultRepository.findHourlyTrendByMemberId(memberId, LocalDateTime.of(2026, 6, 28, 13, 0), now.plusNanos(1)))
                 .thenReturn(List.of(
                         new HealthCheckTrendRawPoint(2026, 6, 28, 13, 2L, 1L, 120.4),
@@ -77,6 +83,9 @@ class DashboardOperationsServiceTest {
         assertThat(response.notification().sentCount()).isEqualTo(5L);
         assertThat(response.notification().failedCount()).isEqualTo(1L);
         assertThat(response.notification().retryPendingCount()).isEqualTo(2L);
+        assertThat(response.notification().failureTypes().channelDisabledCount()).isEqualTo(3L);
+        assertThat(response.notification().failureTypes().sendFailedCount()).isEqualTo(4L);
+        assertThat(response.notification().failureTypes().retryExhaustedCount()).isEqualTo(5L);
         assertThat(response.healthCheckTrend()).hasSize(24);
         assertThat(response.healthCheckTrend().getFirst().bucketStart()).isEqualTo(LocalDateTime.of(2026, 6, 28, 13, 0));
         assertThat(response.healthCheckTrend().getFirst().successCount()).isEqualTo(2L);

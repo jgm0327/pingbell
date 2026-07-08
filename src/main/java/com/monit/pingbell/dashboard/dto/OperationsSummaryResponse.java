@@ -30,7 +30,15 @@ public record OperationsSummaryResponse(
     public record NotificationSummary(
             long sentCount,
             long failedCount,
-            long retryPendingCount
+            long retryPendingCount,
+            FailureTypeSummary failureTypes
+    ) {
+    }
+
+    public record FailureTypeSummary(
+            long channelDisabledCount,
+            long sendFailedCount,
+            long retryExhaustedCount
     ) {
     }
 

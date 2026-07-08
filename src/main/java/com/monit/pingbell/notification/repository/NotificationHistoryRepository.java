@@ -43,6 +43,7 @@ public interface NotificationHistoryRepository extends JpaRepository<Notificatio
             where history.channel.member.id = :memberId
               and history.status = com.monit.pingbell.notification.type.NotificationStatus.FAILED
               and history.retryCount >= history.maxRetryCount
+              and (history.errorMessage is null or history.errorMessage <> 'Notification channel is disabled.')
             """)
     Page<NotificationHistory> findRetryExhaustedFailuresByChannelMemberId(
             @Param("memberId") Long memberId,
@@ -74,6 +75,47 @@ public interface NotificationHistoryRepository extends JpaRepository<Notificatio
     Page<NotificationHistory> findSendFailedFailuresByChannelMemberId(
             @Param("memberId") Long memberId,
             Pageable pageable
+    );
+
+    @Query("""
+            select count(history)
+            from NotificationHistory history
+            where history.channel.member.id = :memberId
+              and history.status = com.monit.pingbell.notification.type.NotificationStatus.FAILED
+              and history.errorMessage = 'Notification channel is disabled.'
+              and history.createdAt >= :since
+            """)
+    long countChannelDisabledFailuresByChannelMemberIdAndCreatedAtGreaterThanEqual(
+            @Param("memberId") Long memberId,
+            @Param("since") LocalDateTime since
+    );
+
+    @Query("""
+            select count(history)
+            from NotificationHistory history
+            where history.channel.member.id = :memberId
+              and history.status = com.monit.pingbell.notification.type.NotificationStatus.FAILED
+              and history.retryCount < history.maxRetryCount
+              and (history.errorMessage is null or history.errorMessage <> 'Notification channel is disabled.')
+              and history.createdAt >= :since
+            """)
+    long countSendFailedFailuresByChannelMemberIdAndCreatedAtGreaterThanEqual(
+            @Param("memberId") Long memberId,
+            @Param("since") LocalDateTime since
+    );
+
+    @Query("""
+            select count(history)
+            from NotificationHistory history
+            where history.channel.member.id = :memberId
+              and history.status = com.monit.pingbell.notification.type.NotificationStatus.FAILED
+              and history.retryCount >= history.maxRetryCount
+              and (history.errorMessage is null or history.errorMessage <> 'Notification channel is disabled.')
+              and history.createdAt >= :since
+            """)
+    long countRetryExhaustedFailuresByChannelMemberIdAndCreatedAtGreaterThanEqual(
+            @Param("memberId") Long memberId,
+            @Param("since") LocalDateTime since
     );
 
     @EntityGraph(attributePaths = {"incident", "incident.monitor", "channel"})
