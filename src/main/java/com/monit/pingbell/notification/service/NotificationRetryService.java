@@ -35,7 +35,7 @@ public class NotificationRetryService {
     private void retry(NotificationHistory history, LocalDateTime now) {
         NotificationChannel channel = history.getChannel();
         if (!channel.isEnabled()) {
-            history.markFailed("Notification channel is disabled.", now);
+            history.markFailed(NotificationHistory.CHANNEL_DISABLED_ERROR_MESSAGE, now);
             recordRetryMetrics(history);
             return;
         }

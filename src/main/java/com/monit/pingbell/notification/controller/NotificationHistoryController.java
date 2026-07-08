@@ -5,6 +5,7 @@ import com.monit.pingbell.global.security.auth.AuthenticatedMember;
 import com.monit.pingbell.notification.dto.NotificationHistoryResponse;
 import com.monit.pingbell.notification.service.NotificationHistoryQueryService;
 import com.monit.pingbell.notification.service.NotificationHistoryResendService;
+import com.monit.pingbell.notification.type.NotificationFailureType;
 import com.monit.pingbell.notification.type.NotificationStatus;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
@@ -36,9 +37,10 @@ public class NotificationHistoryController {
             @AuthenticationPrincipal AuthenticatedMember member,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
-            @RequestParam(required = false) NotificationStatus status
+            @RequestParam(required = false) NotificationStatus status,
+            @RequestParam(required = false) NotificationFailureType failureType
     ) {
-        return historyQueryService.getHistories(member.id(), status, PageRequest.of(
+        return historyQueryService.getHistories(member.id(), status, failureType, PageRequest.of(
                 validatePage(page),
                 validateSize(size),
                 Sort.by(Sort.Direction.DESC, "id")

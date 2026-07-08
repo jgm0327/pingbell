@@ -2,6 +2,7 @@ package com.monit.pingbell.notification.dto;
 
 import com.monit.pingbell.notification.domain.NotificationHistory;
 import com.monit.pingbell.notification.type.NotificationChannelType;
+import com.monit.pingbell.notification.type.NotificationFailureType;
 import com.monit.pingbell.notification.type.NotificationStatus;
 import com.monit.pingbell.notification.type.NotificationType;
 
@@ -28,6 +29,7 @@ public record NotificationHistoryResponse(
         LocalDateTime sentAt,
         boolean manualResend,
         Long resendOfHistoryId,
+        NotificationFailureType failureType,
         LocalDateTime createdAt,
         String errorMessage
 ) {
@@ -54,9 +56,23 @@ public record NotificationHistoryResponse(
                 history.getSentAt(),
                 history.isManualResend(),
                 history.getResendOfHistoryId(),
+                resolveFailureType(history),
                 history.getCreatedAt(),
                 sanitizeErrorMessage(history.getErrorMessage())
         );
+    }
+
+    private static NotificationFailureType resolveFailureType(NotificationHistory history) {
+        if (!history.isFailed()) {
+            return null;
+        }
+        if (history.isChannelDisabledFailure()) {
+            return NotificationFailureType.CHANNEL_DISABLED;
+        }
+        if (history.isRetryExhaustedFailure()) {
+            return NotificationFailureType.RETRY_EXHAUSTED;
+        }
+        return NotificationFailureType.SEND_FAILED;
     }
 
     private static String sanitizeErrorMessage(String errorMessage) {

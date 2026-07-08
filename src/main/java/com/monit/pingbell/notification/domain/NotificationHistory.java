@@ -17,6 +17,8 @@ import java.time.LocalDateTime;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class NotificationHistory extends BaseTimeEntity {
 
+    public static final String CHANNEL_DISABLED_ERROR_MESSAGE = "Notification channel is disabled.";
+
     private static final int DEFAULT_MAX_RETRY_COUNT = 2;
 
     @Id
@@ -152,5 +154,13 @@ public class NotificationHistory extends BaseTimeEntity {
 
     public boolean isFailed() {
         return this.status == NotificationStatus.FAILED;
+    }
+
+    public boolean isRetryExhaustedFailure() {
+        return isFailed() && this.retryCount >= this.maxRetryCount;
+    }
+
+    public boolean isChannelDisabledFailure() {
+        return isFailed() && CHANNEL_DISABLED_ERROR_MESSAGE.equals(this.errorMessage);
     }
 }

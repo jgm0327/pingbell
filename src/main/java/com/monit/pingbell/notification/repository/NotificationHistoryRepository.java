@@ -37,6 +37,46 @@ public interface NotificationHistoryRepository extends JpaRepository<Notificatio
     );
 
     @EntityGraph(attributePaths = {"incident", "incident.monitor", "channel"})
+    @Query("""
+            select history
+            from NotificationHistory history
+            where history.channel.member.id = :memberId
+              and history.status = com.monit.pingbell.notification.type.NotificationStatus.FAILED
+              and history.retryCount >= history.maxRetryCount
+            """)
+    Page<NotificationHistory> findRetryExhaustedFailuresByChannelMemberId(
+            @Param("memberId") Long memberId,
+            Pageable pageable
+    );
+
+    @EntityGraph(attributePaths = {"incident", "incident.monitor", "channel"})
+    @Query("""
+            select history
+            from NotificationHistory history
+            where history.channel.member.id = :memberId
+              and history.status = com.monit.pingbell.notification.type.NotificationStatus.FAILED
+              and history.errorMessage = 'Notification channel is disabled.'
+            """)
+    Page<NotificationHistory> findChannelDisabledFailuresByChannelMemberId(
+            @Param("memberId") Long memberId,
+            Pageable pageable
+    );
+
+    @EntityGraph(attributePaths = {"incident", "incident.monitor", "channel"})
+    @Query("""
+            select history
+            from NotificationHistory history
+            where history.channel.member.id = :memberId
+              and history.status = com.monit.pingbell.notification.type.NotificationStatus.FAILED
+              and history.retryCount < history.maxRetryCount
+              and (history.errorMessage is null or history.errorMessage <> 'Notification channel is disabled.')
+            """)
+    Page<NotificationHistory> findSendFailedFailuresByChannelMemberId(
+            @Param("memberId") Long memberId,
+            Pageable pageable
+    );
+
+    @EntityGraph(attributePaths = {"incident", "incident.monitor", "channel"})
     Optional<NotificationHistory> findByIdAndChannelMemberId(Long id, Long memberId);
 
     long countByChannelMemberIdAndStatusAndCreatedAtGreaterThanEqual(
