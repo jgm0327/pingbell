@@ -78,6 +78,16 @@ pingbell:
         health-check-completed: ${PINGBELL_KAFKA_TOPIC_HEALTH_CHECK_COMPLETED:pingbell.health-check.completed}
         notification-requested: ${PINGBELL_KAFKA_TOPIC_NOTIFICATION_REQUESTED:pingbell.notification.requested}
   notification:
+    retry:
+      scheduler-interval-ms: ${PINGBELL_NOTIFICATION_RETRY_SCHEDULER_INTERVAL_MS:30000}
+      incident-open:
+        immediate-retry: ${PINGBELL_NOTIFICATION_RETRY_INCIDENT_OPEN_IMMEDIATE_RETRY:true}
+        max-retry-count: ${PINGBELL_NOTIFICATION_RETRY_INCIDENT_OPEN_MAX_RETRY_COUNT:4}
+        backoffs: ${PINGBELL_NOTIFICATION_RETRY_INCIDENT_OPEN_BACKOFFS:30s,1m,3m}
+      incident-resolved:
+        immediate-retry: ${PINGBELL_NOTIFICATION_RETRY_INCIDENT_RESOLVED_IMMEDIATE_RETRY:false}
+        max-retry-count: ${PINGBELL_NOTIFICATION_RETRY_INCIDENT_RESOLVED_MAX_RETRY_COUNT:2}
+        backoffs: ${PINGBELL_NOTIFICATION_RETRY_INCIDENT_RESOLVED_BACKOFFS:1m,5m}
     kafka:
       consumer:
         group-id: ${PINGBELL_NOTIFICATION_WORKER_GROUP_ID:pingbell-notification-worker}

@@ -131,7 +131,7 @@ public interface NotificationHistoryRepository extends JpaRepository<Notificatio
     @Query("""
             select history
             from NotificationHistory history
-            where history.status = com.monit.pingbell.notification.type.NotificationStatus.RETRY_PENDING
+            where history.retryable = true
               and history.nextRetryAt <= :now
               and history.retryCount < history.maxRetryCount
             order by history.nextRetryAt asc, history.id asc

@@ -27,6 +27,7 @@ public class NotificationService {
     private final NotificationFailureClassifier failureClassifier;
     private final NotificationMessageFactory messageFactory;
     private final PingbellMetrics metrics;
+    private final NotificationRetryPolicy retryPolicy;
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void notifyIncidentOpened(Incident incident, LocalDateTime now) {
@@ -47,21 +48,72 @@ public class NotificationService {
                 continue;
             }
 
-            NotificationHistory history = historyRepository.save(new NotificationHistory(incident, channel, type));
+            NotificationHistory history = new NotificationHistory(incident, channel, type);
+            history.changeMaxRetryCount(retryPolicy.maxRetryCount(type));
+            history = historyRepository.save(history);
             try {
                 NotificationSender sender = findSender(channel.getType());
                 sender.send(channel, messageFactory.create(incident, type));
                 history.markSent(now);
                 metrics.recordNotificationDelivery(channel.getType(), type, history.getStatus(), history.isManualResend());
             } catch (Exception e) {
-                NotificationFailureResult failure = failureClassifier.classify(e);
-                if (failure.retryable()) {
-                    history.markRetryPending(failure.errorMessage(), now, nextRetryAt(history, now));
-                } else {
-                    history.markFailed(failure.errorMessage(), now);
-                }
+                handleInitialSendFailure(history, channel, type, now, e);
                 metrics.recordNotificationDelivery(channel.getType(), type, history.getStatus(), history.isManualResend());
             }
+        }
+    }
+
+    private void handleInitialSendFailure(
+            NotificationHistory history,
+            NotificationChannel channel,
+            NotificationType type,
+            LocalDateTime now,
+            Exception e
+    ) {
+        NotificationFailureResult failure = failureClassifier.classify(e);
+        if (!failure.retryable()) {
+            history.markFailed(failure.errorMessage(), now);
+            return;
+        }
+
+        if (retryPolicy.shouldRetryImmediatelyOnInitialFailure(type)) {
+            retryImmediately(history, channel, type, now, failure);
+            return;
+        }
+
+        history.markRetryScheduledFailure(
+                failure.errorMessage(),
+                now,
+                retryPolicy.nextRetryAt(type, history.getRetryCount(), now)
+        );
+    }
+
+    private void retryImmediately(
+            NotificationHistory history,
+            NotificationChannel channel,
+            NotificationType type,
+            LocalDateTime now,
+            NotificationFailureResult firstFailure
+    ) {
+        history.increaseRetryCount();
+        try {
+            NotificationSender sender = findSender(channel.getType());
+            sender.send(channel, messageFactory.create(history.getIncident(), type));
+            history.markSent(now);
+        } catch (Exception retryException) {
+            NotificationFailureResult retryFailure = failureClassifier.classify(retryException);
+            if (retryFailure.retryable() && history.getRetryCount() < history.getMaxRetryCount()) {
+                history.markRetryScheduledFailure(
+                        retryFailure.errorMessage(),
+                        now,
+                        retryPolicy.nextRetryAt(type, history.getRetryCount(), now)
+                );
+                return;
+            }
+            String errorMessage = retryFailure.retryable()
+                    ? retryFailure.errorMessage()
+                    : firstFailure.errorMessage() + " / immediate retry failed: " + retryFailure.errorMessage();
+            history.markFailed(errorMessage, now);
         }
     }
 
@@ -90,10 +142,4 @@ public class NotificationService {
                 .orElseThrow(() -> new IllegalStateException("Unsupported notification channel type: " + type));
     }
 
-    private LocalDateTime nextRetryAt(NotificationHistory history, LocalDateTime now) {
-        if (history.getRetryCount() == 0) {
-            return now.plusMinutes(1);
-        }
-        return now.plusMinutes(5);
-    }
 }

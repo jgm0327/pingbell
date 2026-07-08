@@ -6,6 +6,7 @@ import com.monit.pingbell.incident.domain.IncidentStatus;
 import com.monit.pingbell.member.domain.Member;
 import com.monit.pingbell.monitor.domain.Monitor;
 import com.monit.pingbell.monitor.domain.MonitorStatus;
+import com.monit.pingbell.notification.config.NotificationRetryProperties;
 import com.monit.pingbell.notification.domain.NotificationChannel;
 import com.monit.pingbell.notification.domain.NotificationHistory;
 import com.monit.pingbell.notification.dto.NotificationMessage;
@@ -75,10 +76,10 @@ class NotificationRetryServiceTest {
 
         retryService.retryDueHistories(now);
 
-        assertThat(history.getStatus()).isEqualTo(NotificationStatus.RETRY_PENDING);
+        assertThat(history.getStatus()).isEqualTo(NotificationStatus.FAILED);
         assertThat(history.getRetryCount()).isEqualTo(1);
         assertThat(history.getLastAttemptedAt()).isEqualTo(now);
-        assertThat(history.getNextRetryAt()).isEqualTo(now.plusMinutes(5));
+        assertThat(history.getNextRetryAt()).isEqualTo(now.plusSeconds(30));
         assertThat(history.isRetryable()).isTrue();
     }
 
@@ -143,7 +144,8 @@ class NotificationRetryServiceTest {
                 List.of(sender),
                 new NotificationFailureClassifier(),
                 new NotificationMessageFactory(),
-                metrics
+                metrics,
+                new NotificationRetryPolicy(new NotificationRetryProperties())
         );
     }
 
