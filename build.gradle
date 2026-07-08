@@ -53,7 +53,7 @@ dependencies {
 
 tasks.named('test') {
     useJUnitPlatform {
-        excludeTags 'migration'
+        excludeTags 'migration', 'db-seed'
     }
 }
 
@@ -67,5 +67,19 @@ tasks.register('migrationTest', Test) {
 
     useJUnitPlatform {
         includeTags 'migration'
+        excludeTags 'db-seed'
+    }
+}
+
+tasks.register('dbSeedTest', Test) {
+    description = 'Seeds local PostgreSQL with performance test data.'
+    group = 'verification'
+
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    shouldRunAfter tasks.named('migrationTest')
+
+    useJUnitPlatform {
+        includeTags 'db-seed'
     }
 }
