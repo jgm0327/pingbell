@@ -14,5 +14,7 @@ public interface NotificationChannelRepository extends JpaRepository<Notificatio
 
     List<NotificationChannel> findAllByMemberIdOrderByIdDesc(Long memberId);
 
+    List<NotificationChannel> findAllByMemberIdAndEnabledOrderByIdDesc(Long memberId, boolean enabled);
+
     Optional<NotificationChannel> findByPublicIdAndMemberId(UUID publicId, Long memberId);
 }

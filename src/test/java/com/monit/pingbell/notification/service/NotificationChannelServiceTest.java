@@ -13,6 +13,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -30,6 +31,62 @@ class NotificationChannelServiceTest {
 
     @InjectMocks
     private NotificationChannelService channelService;
+
+    @Test
+    void getChannelsReturnsAllChannelsWhenEnabledFilterIsNull() {
+        Member member = Member.builder()
+                .email("user@example.com")
+                .password("password")
+                .build();
+        NotificationChannel enabledChannel = new NotificationChannel(member, NotificationChannelType.EMAIL, "enabled@example.com");
+        NotificationChannel disabledChannel = new NotificationChannel(member, NotificationChannelType.EMAIL, "disabled@example.com");
+        disabledChannel.disable();
+
+        when(channelRepository.findAllByMemberIdOrderByIdDesc(member.getId()))
+                .thenReturn(List.of(enabledChannel, disabledChannel));
+
+        var responses = channelService.getChannels(member.getId(), null);
+
+        assertThat(responses).hasSize(2);
+        assertThat(responses)
+                .extracting(response -> response.enabled())
+                .containsExactly(true, false);
+    }
+
+    @Test
+    void getChannelsReturnsOnlyEnabledChannelsWhenEnabledFilterIsTrue() {
+        Member member = Member.builder()
+                .email("user@example.com")
+                .password("password")
+                .build();
+        NotificationChannel enabledChannel = new NotificationChannel(member, NotificationChannelType.EMAIL, "enabled@example.com");
+
+        when(channelRepository.findAllByMemberIdAndEnabledOrderByIdDesc(member.getId(), true))
+                .thenReturn(List.of(enabledChannel));
+
+        var responses = channelService.getChannels(member.getId(), true);
+
+        assertThat(responses).hasSize(1);
+        assertThat(responses.get(0).enabled()).isTrue();
+    }
+
+    @Test
+    void getChannelsReturnsOnlyDisabledChannelsWhenEnabledFilterIsFalse() {
+        Member member = Member.builder()
+                .email("user@example.com")
+                .password("password")
+                .build();
+        NotificationChannel disabledChannel = new NotificationChannel(member, NotificationChannelType.EMAIL, "disabled@example.com");
+        disabledChannel.disable();
+
+        when(channelRepository.findAllByMemberIdAndEnabledOrderByIdDesc(member.getId(), false))
+                .thenReturn(List.of(disabledChannel));
+
+        var responses = channelService.getChannels(member.getId(), false);
+
+        assertThat(responses).hasSize(1);
+        assertThat(responses.get(0).enabled()).isFalse();
+    }
 
     @Test
     void createChannelMasksEmailTargetInResponse() {
