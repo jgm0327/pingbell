@@ -52,8 +52,12 @@ public class NotificationChannelService {
     }
 
     @Transactional(readOnly = true)
-    public List<NotificationChannelResponse> getChannels(Long memberId) {
-        return channelRepository.findAllByMemberIdOrderByIdDesc(memberId)
+    public List<NotificationChannelResponse> getChannels(Long memberId, Boolean enabled) {
+        List<NotificationChannel> channels = enabled == null
+                ? channelRepository.findAllByMemberIdOrderByIdDesc(memberId)
+                : channelRepository.findAllByMemberIdAndEnabledOrderByIdDesc(memberId, enabled);
+
+        return channels
                 .stream()
                 .map(NotificationChannelResponse::from)
                 .toList();
