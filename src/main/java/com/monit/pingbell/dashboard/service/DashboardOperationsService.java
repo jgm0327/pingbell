@@ -55,7 +55,7 @@ public class DashboardOperationsService {
         long failedNotificationCount = notificationHistoryRepository
                 .countByChannelMemberIdAndStatusAndCreatedAtGreaterThanEqual(memberId, NotificationStatus.FAILED, since);
         long retryPendingNotificationCount = notificationHistoryRepository
-                .countByChannelMemberIdAndStatusAndCreatedAtGreaterThanEqual(memberId, NotificationStatus.RETRY_PENDING, since);
+                .countRetryScheduledByChannelMemberIdAndCreatedAtGreaterThanEqual(memberId, since);
         long channelDisabledFailureCount = notificationHistoryRepository.countChannelDisabledFailuresByChannelMemberIdAndCreatedAtGreaterThanEqual(memberId, since);
         long sendFailedFailureCount = notificationHistoryRepository.countSendFailedFailuresByChannelMemberIdAndCreatedAtGreaterThanEqual(memberId, since);
         long retryExhaustedFailureCount = notificationHistoryRepository.countRetryExhaustedFailuresByChannelMemberIdAndCreatedAtGreaterThanEqual(memberId, since);

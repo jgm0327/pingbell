@@ -66,6 +66,9 @@ public record NotificationHistoryResponse(
         if (!history.isFailed()) {
             return null;
         }
+        if (isRetryScheduledFailure(history)) {
+            return null;
+        }
         if (history.isChannelDisabledFailure()) {
             return NotificationFailureType.CHANNEL_DISABLED;
         }
@@ -73,6 +76,12 @@ public record NotificationHistoryResponse(
             return NotificationFailureType.RETRY_EXHAUSTED;
         }
         return NotificationFailureType.SEND_FAILED;
+    }
+
+    private static boolean isRetryScheduledFailure(NotificationHistory history) {
+        return history.isRetryable()
+                && history.getNextRetryAt() != null
+                && history.getRetryCount() < history.getMaxRetryCount();
     }
 
     private static String sanitizeErrorMessage(String errorMessage) {

@@ -55,7 +55,7 @@ class DashboardOperationsServiceTest {
                 .thenReturn(5L);
         when(notificationHistoryRepository.countByChannelMemberIdAndStatusAndCreatedAtGreaterThanEqual(memberId, NotificationStatus.FAILED, since))
                 .thenReturn(1L);
-        when(notificationHistoryRepository.countByChannelMemberIdAndStatusAndCreatedAtGreaterThanEqual(memberId, NotificationStatus.RETRY_PENDING, since))
+        when(notificationHistoryRepository.countRetryScheduledByChannelMemberIdAndCreatedAtGreaterThanEqual(memberId, since))
                 .thenReturn(2L);
         when(notificationHistoryRepository.countChannelDisabledFailuresByChannelMemberIdAndCreatedAtGreaterThanEqual(memberId, since))
                 .thenReturn(3L);

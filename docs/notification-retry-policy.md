@@ -4,7 +4,7 @@
 
 ## 1. 현재 판단
 
-Pingbell은 현재 알림 발송 실패 시 `NotificationHistory`를 `FAILED`로 기록하고 즉시 재시도하지 않는다.
+Pingbell은 현재 알림 발송 실패를 재시도 가능 여부와 알림 중요도에 따라 다르게 기록한다. 새 자동 재시도 예약은 `FAILED + retryable=true + nextRetryAt` 조합으로 저장하며, 기존 `RETRY_PENDING` 상태는 호환성을 위해 유지한다.
 
 MVP 2 이후 다음 단계에서는 Kafka나 별도 notification worker를 바로 도입하지 않고, 단일 Spring Boot 애플리케이션 안에서 제한적인 재시도 정책을 먼저 구현한다. 목적은 일시적인 네트워크 오류나 외부 알림 서비스의 짧은 장애를 흡수하되, 잘못된 target이나 권한 문제처럼 재시도해도 성공 가능성이 낮은 실패를 반복 호출하지 않는 것이다.
 
@@ -65,18 +65,21 @@ MVP 2 이후 다음 단계에서는 Kafka나 별도 notification worker를 바�
 
 기본 정책:
 
-- 최대 시도 횟수: 최초 발송 포함 3회
-- 최대 재시도 횟수: 2회
-- backoff 간격:
-  - 1차 재시도: 최초 실패 후 1분 뒤
-  - 2차 재시도: 1차 재시도 실패 후 5분 뒤
+- 장애 발생 알림(`INCIDENT_OPEN`)
+  - 최초 실패 직후 즉시 1회 재시도한다.
+  - 예약 재시도 backoff 기본값은 `30초 -> 1분 -> 3분`이다.
+  - 최대 재시도 횟수 기본값은 4회다.
+- 장애 복구 알림(`INCIDENT_RESOLVED`)
+  - 즉시 재시도 없이 예약 재시도만 수행한다.
+  - 예약 재시도 backoff 기본값은 `1분 -> 5분`이다.
+  - 최대 재시도 횟수 기본값은 2회다.
 - 재시도 실행 방식: Spring Scheduler 기반 polling
 - 재시도 대상 조회 조건:
-  - `status = RETRY_PENDING`
+  - `retryable = true`
   - `nextRetryAt <= now`
   - `retryCount < maxRetryCount`
 
-초기 구현에서는 지수 backoff나 jitter를 넣지 않는다. 단일 앱 MVP 단계에서는 고정 간격이 더 단순하고 테스트하기 쉽다. Kafka worker 분리 이후에 메시지 재처리와 함께 backoff 전략을 고도화한다.
+초기 구현에서는 지수 backoff나 jitter를 넣지 않는다. 단일 앱 MVP 단계에서는 타입별 고정 간격이 더 단순하고 테스트하기 쉽다. Kafka worker 분리 이후에 메시지 재처리와 함께 backoff 전략을 고도화한다.
 
 ## 7. 최종 실패 처리
 
@@ -134,8 +137,10 @@ RETRY_PENDING -> FAILED
 
 - `PENDING`: 최초 발송 시도 전 또는 시도 중
 - `SENT`: 발송 성공
-- `RETRY_PENDING`: 재시도 대상 실패가 발생했고 다음 재시도를 기다리는 상태
+- `RETRY_PENDING`: 과거 구현에서 재시도 대상 실패가 발생했고 다음 재시도를 기다리는 상태
 - `FAILED`: 재시도 불가 또는 최대 재시도 초과로 최종 실패
+
+현재 신규 자동 재시도 예약은 `RETRY_PENDING` 대신 `FAILED + retryable=true + nextRetryAt != null + retryCount < maxRetryCount`로 표현한다. 따라서 화면과 문서는 이 조합을 최종 실패가 아니라 "재시도 예정"으로 표시해야 한다.
 
 ## 10. 필요한 필드
 
@@ -246,6 +251,8 @@ Frontend 테스트:
 ## 13. 다음 작업
 
 Backend Issue 1인 `NotificationHistory 재시도 상태와 필드 추가`, Issue 2인 `알림 실패 분류 모델 추가`, Issue 3인 `자동 재시도 Scheduler 구현`, Issue 4인 `NotificationHistory 조회 응답 보완`은 완료됐다.
+
+추가로 알림 중요도별 재시도 정책이 적용되어, 알림 이력 화면은 `FAILED + retryable=true + nextRetryAt` 항목을 최종 실패가 아닌 재시도 예정으로 표시한다.
 
 알림 재시도 수동 재전송 정책 설계는 `docs/manual-notification-resend-policy.md`에 정리했다.
 

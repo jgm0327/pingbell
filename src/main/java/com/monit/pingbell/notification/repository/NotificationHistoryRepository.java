@@ -70,6 +70,7 @@ public interface NotificationHistoryRepository extends JpaRepository<Notificatio
             where history.channel.member.id = :memberId
               and history.status = com.monit.pingbell.notification.type.NotificationStatus.FAILED
               and history.retryCount < history.maxRetryCount
+              and not (history.retryable = true and history.nextRetryAt is not null)
               and (history.errorMessage is null or history.errorMessage <> 'Notification channel is disabled.')
             """)
     Page<NotificationHistory> findSendFailedFailuresByChannelMemberId(
@@ -96,6 +97,7 @@ public interface NotificationHistoryRepository extends JpaRepository<Notificatio
             where history.channel.member.id = :memberId
               and history.status = com.monit.pingbell.notification.type.NotificationStatus.FAILED
               and history.retryCount < history.maxRetryCount
+              and not (history.retryable = true and history.nextRetryAt is not null)
               and (history.errorMessage is null or history.errorMessage <> 'Notification channel is disabled.')
               and history.createdAt >= :since
             """)
@@ -125,6 +127,26 @@ public interface NotificationHistoryRepository extends JpaRepository<Notificatio
             Long memberId,
             NotificationStatus status,
             LocalDateTime since
+    );
+
+    @Query("""
+            select count(history)
+            from NotificationHistory history
+            where history.channel.member.id = :memberId
+              and history.createdAt >= :since
+              and (
+                    history.status = com.monit.pingbell.notification.type.NotificationStatus.RETRY_PENDING
+                    or (
+                        history.status = com.monit.pingbell.notification.type.NotificationStatus.FAILED
+                        and history.retryable = true
+                        and history.nextRetryAt is not null
+                        and history.retryCount < history.maxRetryCount
+                    )
+              )
+            """)
+    long countRetryScheduledByChannelMemberIdAndCreatedAtGreaterThanEqual(
+            @Param("memberId") Long memberId,
+            @Param("since") LocalDateTime since
     );
 
     @EntityGraph(attributePaths = {"incident", "incident.monitor", "channel"})

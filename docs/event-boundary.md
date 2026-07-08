@@ -67,7 +67,8 @@ CheckService
 - 같은 incident, channel, notification type에 대해서는 중복 발송하지 않는다.
 - 활성화된 알림 채널이 없고 기존 채널도 없으면 기본 EMAIL 채널을 생성한다.
 - 발송 성공은 `SENT`로 기록한다.
-- retryable 실패는 `RETRY_PENDING`으로 기록하고 `nextRetryAt`을 설정한다.
+- retryable 실패는 새 구현 기준에서 `FAILED + retryable=true + nextRetryAt`으로 기록한다.
+- 기존 `RETRY_PENDING` 상태는 호환성을 위해 유지한다.
 - non-retryable 실패는 `FAILED`로 기록한다.
 - `CheckService`는 알림 예외를 내부에서 무시해 check 결과 저장과 incident 판정이 알림 실패 때문에 롤백되지 않게 한다.
 
@@ -85,10 +86,10 @@ NotificationRetryScheduler
 
 현재 특징:
 
-- `NotificationRetryScheduler`는 10초마다 실행된다.
-- `RETRY_PENDING`이고 `nextRetryAt <= now`인 이력을 재시도한다.
+- `NotificationRetryScheduler`는 설정값 기준으로 실행되며 기본 주기는 30초다.
+- `retryable=true`, `nextRetryAt <= now`, `retryCount < maxRetryCount`인 이력을 재시도한다.
 - 채널이 비활성화되면 최종 `FAILED`로 처리한다.
-- retryable 실패이고 최대 재시도 횟수에 도달하지 않았으면 다시 `RETRY_PENDING`으로 둔다.
+- retryable 실패이고 최대 재시도 횟수에 도달하지 않았으면 다시 `FAILED + retryable=true + nextRetryAt`으로 둔다.
 - 최대 재시도 횟수를 넘거나 non-retryable 실패면 `FAILED`로 처리한다.
 
 ### 3.4 Manual Resend 흐름
@@ -265,7 +266,7 @@ nextRetryAt
 
 주의:
 
-- retryable이면 `RETRY_PENDING`으로 전이한다.
+- retryable이면 현재 구현에서는 `FAILED + retryable=true + nextRetryAt`으로 다음 재시도 예약을 표현한다.
 - non-retryable이거나 최대 재시도 횟수를 넘으면 `FAILED`로 전이한다.
 - 나중에 DLQ를 도입하면 최종 실패 이력을 DLQ 처리 대상으로 삼는다.
 
@@ -300,7 +301,7 @@ Worker 분리 후보는 다음 순서가 적절하다.
 3. Notification Worker
    - `IncidentOpened`, `IncidentResolved`를 받아 채널별 NotificationHistory 생성과 발송을 맡는다.
 4. Retry / DLQ Handler
-   - `NotificationFailed`와 `RETRY_PENDING` 이력을 기준으로 재시도와 최종 실패 처리를 맡는다.
+   - `NotificationFailed`와 `retryable=true + nextRetryAt` 이력을 기준으로 재시도와 최종 실패 처리를 맡는다.
 
 ## 8. 실패 처리 기준
 
@@ -322,14 +323,14 @@ Worker 분리 후보는 다음 순서가 적절하다.
 
 - 알림 실패는 check 결과 저장과 incident 판정을 롤백시키지 않는다.
 - 발송 결과는 `NotificationHistory`에 남긴다.
-- retryable 실패는 `RETRY_PENDING`으로 둔다.
+- retryable 실패는 `FAILED + retryable=true + nextRetryAt`으로 둔다.
 - non-retryable 실패는 `FAILED`로 둔다.
 - 같은 incident, channel, notification type은 중복 발송하지 않는다.
 
 ### 8.4 Notification 재시도 실패
 
 - 채널이 비활성화되어 있으면 `FAILED`로 종료한다.
-- retryable 실패가 계속되면 최대 재시도 횟수 전까지 `RETRY_PENDING`을 유지한다.
+- retryable 실패가 계속되면 최대 재시도 횟수 전까지 `FAILED + retryable=true + nextRetryAt` 예약을 유지한다.
 - 최대 재시도 횟수를 넘으면 `FAILED`로 종료한다.
 - DLQ 도입 시 `FAILED` 중 retry exhausted인 이력을 DLQ 후보로 삼는다.
 

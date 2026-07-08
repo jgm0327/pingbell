@@ -312,6 +312,50 @@ class NotificationHistoryQueryServiceTest {
     }
 
     @Test
+    void retryScheduledFailedResponseDoesNotExposeFinalFailureType() {
+        Member member = Member.builder()
+                .email("user@example.com")
+                .password("password")
+                .build();
+        Monitor monitor = Monitor.builder()
+                .member(member)
+                .name("API server")
+                .url("https://api.example.com/health")
+                .intervalSeconds(60)
+                .timeoutMillis(1000)
+                .failureThreshold(3)
+                .recoveryThreshold(2)
+                .status(MonitorStatus.ACTIVE)
+                .nextCheckAt(LocalDateTime.now())
+                .build();
+        Incident incident = Incident.builder()
+                .monitor(monitor)
+                .status(IncidentStatus.OPEN)
+                .startedAt(LocalDateTime.now())
+                .lastErrorMessage("timeout")
+                .build();
+        NotificationChannel channel = new NotificationChannel(
+                member,
+                NotificationChannelType.SLACK,
+                "https://hooks.slack.com/services/test"
+        );
+        NotificationHistory history = new NotificationHistory(
+                incident,
+                channel,
+                NotificationType.INCIDENT_OPEN
+        );
+        LocalDateTime attemptedAt = LocalDateTime.of(2026, 7, 8, 10, 0);
+        history.markRetryScheduledFailure("timeout", attemptedAt, attemptedAt.plusSeconds(30));
+
+        var response = NotificationHistoryResponse.from(history);
+
+        assertThat(response.status()).isEqualTo(NotificationStatus.FAILED);
+        assertThat(response.retryable()).isTrue();
+        assertThat(response.nextRetryAt()).isEqualTo(attemptedAt.plusSeconds(30));
+        assertThat(response.failureType()).isNull();
+    }
+
+    @Test
     void getHistoriesRejectsFailureTypeWithoutFailedStatus() {
         Long memberId = 1L;
         PageRequest pageable = PageRequest.of(0, 20);
