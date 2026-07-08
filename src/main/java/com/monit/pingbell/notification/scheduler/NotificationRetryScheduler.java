@@ -15,7 +15,7 @@ public class NotificationRetryScheduler {
     private final Clock clock;
     private final NotificationRetryService retryService;
 
-    @Scheduled(fixedDelay = 10000)
+    @Scheduled(fixedDelayString = "${pingbell.notification.retry.scheduler-interval-ms:30000}")
     public void retry() {
         retryService.retryDueHistories(LocalDateTime.now(clock));
     }

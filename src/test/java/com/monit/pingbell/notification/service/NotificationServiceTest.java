@@ -6,6 +6,7 @@ import com.monit.pingbell.incident.domain.IncidentStatus;
 import com.monit.pingbell.member.domain.Member;
 import com.monit.pingbell.monitor.domain.Monitor;
 import com.monit.pingbell.monitor.domain.MonitorStatus;
+import com.monit.pingbell.notification.config.NotificationRetryProperties;
 import com.monit.pingbell.notification.domain.NotificationChannel;
 import com.monit.pingbell.notification.domain.NotificationHistory;
 import com.monit.pingbell.notification.dto.NotificationMessage;
@@ -33,6 +34,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -61,7 +63,8 @@ class NotificationServiceTest {
                 List.of(sender),
                 new NotificationFailureClassifier(),
                 new NotificationMessageFactory(),
-                metrics
+                metrics,
+                createRetryPolicy()
         );
 
         LocalDateTime now = LocalDateTime.of(2026, 6, 19, 12, 0);
@@ -118,7 +121,8 @@ class NotificationServiceTest {
                 List.of(sender),
                 new NotificationFailureClassifier(),
                 new NotificationMessageFactory(),
-                metrics
+                metrics,
+                createRetryPolicy()
         );
 
         LocalDateTime startedAt = LocalDateTime.of(2026, 6, 19, 12, 0);
@@ -165,14 +169,15 @@ class NotificationServiceTest {
     }
 
     @Test
-    void notifyIncidentOpenedMarksRetryPendingWhenWebhookReturnsServerError() {
+    void notifyIncidentOpenedRetriesImmediatelyAndSchedulesFailureWhenWebhookReturnsServerError() {
         notificationService = new NotificationService(
                 channelRepository,
                 historyRepository,
                 List.of(sender),
                 new NotificationFailureClassifier(),
                 new NotificationMessageFactory(),
-                metrics
+                metrics,
+                createRetryPolicy()
         );
         LocalDateTime now = LocalDateTime.of(2026, 6, 22, 10, 0);
         Member member = Member.builder()
@@ -220,11 +225,13 @@ class NotificationServiceTest {
         ArgumentCaptor<NotificationHistory> historyCaptor = ArgumentCaptor.forClass(NotificationHistory.class);
         verify(historyRepository).save(historyCaptor.capture());
         NotificationHistory history = historyCaptor.getValue();
-        assertThat(history.getStatus()).isEqualTo(NotificationStatus.RETRY_PENDING);
+        assertThat(history.getStatus()).isEqualTo(NotificationStatus.FAILED);
         assertThat(history.isRetryable()).isTrue();
-        assertThat(history.getRetryCount()).isZero();
+        assertThat(history.getRetryCount()).isEqualTo(1);
+        assertThat(history.getMaxRetryCount()).isEqualTo(4);
         assertThat(history.getLastAttemptedAt()).isEqualTo(now);
-        assertThat(history.getNextRetryAt()).isEqualTo(now.plusMinutes(1));
+        assertThat(history.getNextRetryAt()).isEqualTo(now.plusSeconds(30));
+        verify(sender, times(2)).send(eq(slackChannel), any(NotificationMessage.class));
     }
 
     @Test
@@ -235,7 +242,8 @@ class NotificationServiceTest {
                 List.of(sender),
                 new NotificationFailureClassifier(),
                 new NotificationMessageFactory(),
-                metrics
+                metrics,
+                createRetryPolicy()
         );
         LocalDateTime now = LocalDateTime.of(2026, 6, 22, 10, 0);
         Member member = Member.builder()
@@ -287,5 +295,9 @@ class NotificationServiceTest {
         assertThat(history.isRetryable()).isFalse();
         assertThat(history.getNextRetryAt()).isNull();
         assertThat(history.getLastAttemptedAt()).isEqualTo(now);
+    }
+
+    private NotificationRetryPolicy createRetryPolicy() {
+        return new NotificationRetryPolicy(new NotificationRetryProperties());
     }
 }

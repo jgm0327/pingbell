@@ -23,6 +23,7 @@ public class NotificationRetryService {
     private final NotificationFailureClassifier failureClassifier;
     private final NotificationMessageFactory messageFactory;
     private final PingbellMetrics metrics;
+    private final NotificationRetryPolicy retryPolicy;
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void retryDueHistories(LocalDateTime now) {
@@ -50,7 +51,11 @@ public class NotificationRetryService {
         } catch (Exception e) {
             NotificationFailureResult failure = failureClassifier.classify(e);
             if (failure.retryable() && history.getRetryCount() < history.getMaxRetryCount()) {
-                history.markRetryPending(failure.errorMessage(), now, nextRetryAt(history, now));
+                history.markRetryScheduledFailure(
+                        failure.errorMessage(),
+                        now,
+                        retryPolicy.nextRetryAt(history.getNotificationType(), history.getRetryCount(), now)
+                );
                 recordRetryMetrics(history);
                 return;
             }
@@ -80,10 +85,4 @@ public class NotificationRetryService {
                 .orElseThrow(() -> new IllegalStateException("Unsupported notification channel type: " + type));
     }
 
-    private LocalDateTime nextRetryAt(NotificationHistory history, LocalDateTime now) {
-        if (history.getRetryCount() == 0) {
-            return now.plusMinutes(1);
-        }
-        return now.plusMinutes(5);
-    }
 }

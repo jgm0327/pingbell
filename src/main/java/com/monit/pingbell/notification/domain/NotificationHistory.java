@@ -129,8 +129,23 @@ public class NotificationHistory extends BaseTimeEntity {
         this.errorMessage = errorMessage;
     }
 
+    public void markRetryScheduledFailure(String errorMessage, LocalDateTime lastAttemptedAt, LocalDateTime nextRetryAt) {
+        this.status = NotificationStatus.FAILED;
+        this.lastAttemptedAt = lastAttemptedAt;
+        this.nextRetryAt = nextRetryAt;
+        this.retryable = true;
+        this.errorMessage = errorMessage;
+    }
+
     public void increaseRetryCount() {
         this.retryCount++;
+    }
+
+    public void changeMaxRetryCount(int maxRetryCount) {
+        if (maxRetryCount < 0) {
+            throw new IllegalArgumentException("maxRetryCount must not be negative");
+        }
+        this.maxRetryCount = maxRetryCount;
     }
 
     public void resetToPending() {
