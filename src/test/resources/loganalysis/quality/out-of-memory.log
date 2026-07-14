@@ -1,0 +1,6 @@
+2026-07-14T13:40:00.001+09:00 INFO  [report-api] heap usedMb=1870 committedMb=2048 maxMb=2048
+2026-07-14T13:40:01.144+09:00 WARN  [report-api] GC pause=812ms cause=Allocation Failure heapAfterGcMb=1942
+2026-07-14T13:40:02.302+09:00 WARN  [report-api] GC overhead limit approaching allocationRateMbPerSec=285
+2026-07-14T13:40:03.918+09:00 ERROR [report-api] java.lang.OutOfMemoryError: Java heap space
+2026-07-14T13:40:03.919+09:00 ERROR [report-api] at com.monit.report.ExportService.buildWorkbook(ExportService.java:184)
+2026-07-14T13:40:04.002+09:00 ERROR [report-api] Request failed operation=exportMonthlyReport status=500

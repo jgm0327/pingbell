@@ -70,9 +70,9 @@ jwt:
 pingbell:
   log-analysis:
     ai:
-      api-key: ${LOG_ANALYSIS_AI_API_KEY:}
+      api-key: ${LOG_ANALYSIS_AI_API_KEY}
       base-url: ${LOG_ANALYSIS_AI_BASE_URL:https://api.openai.com/v1/}
-      model: ${LOG_ANALYSIS_AI_MODEL:}
+      model: ${LOG_ANALYSIS_AI_MODEL}
       timeout-seconds: ${LOG_ANALYSIS_AI_TIMEOUT_SECONDS:30}
   kafka:
     consumer:

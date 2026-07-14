@@ -33,6 +33,8 @@ class DatabasePerformanceSeedTests {
     private final int notificationHistoryCount;
     private final int hotMonitorCount;
     private final int hotCheckResultPercent;
+    private final int dueMonitorPercent;
+    private final int retryDueNotificationPercent;
 
     @Autowired
     DatabasePerformanceSeedTests(
@@ -43,7 +45,9 @@ class DatabasePerformanceSeedTests {
             @Value("${pingbell.seed.incident-count:10000}") int incidentCount,
             @Value("${pingbell.seed.notification-history-count:100000}") int notificationHistoryCount,
             @Value("${pingbell.seed.hot-monitor-count:20}") int hotMonitorCount,
-            @Value("${pingbell.seed.hot-check-result-percent:70}") int hotCheckResultPercent
+            @Value("${pingbell.seed.hot-check-result-percent:70}") int hotCheckResultPercent,
+            @Value("${pingbell.seed.due-monitor-percent:3}") int dueMonitorPercent,
+            @Value("${pingbell.seed.retry-due-notification-percent:4}") int retryDueNotificationPercent
     ) {
         this.jdbcTemplate = jdbcTemplate;
         this.memberCount = memberCount;
@@ -53,6 +57,8 @@ class DatabasePerformanceSeedTests {
         this.notificationHistoryCount = notificationHistoryCount;
         this.hotMonitorCount = hotMonitorCount;
         this.hotCheckResultPercent = hotCheckResultPercent;
+        this.dueMonitorPercent = dueMonitorPercent;
+        this.retryDueNotificationPercent = retryDueNotificationPercent;
     }
 
     @Test
@@ -64,6 +70,8 @@ class DatabasePerformanceSeedTests {
         assertThat(notificationHistoryCount).isPositive();
         assertThat(hotMonitorCount).isBetween(1, monitorCount);
         assertThat(hotCheckResultPercent).isBetween(1, 99);
+        assertThat(dueMonitorPercent).isBetween(1, 5);
+        assertThat(retryDueNotificationPercent).isBetween(1, 5);
 
         deletePreviousSeedData();
 
@@ -81,9 +89,11 @@ class DatabasePerformanceSeedTests {
                 "incidents", countSeedIncidents(),
                 "notificationHistories", countSeedNotificationHistories()
         );
+        Map<String, Integer> dueDistribution = dueDistribution();
 
         log.info("Seeded DB performance data: {}", counts);
         log.info("Seeded check result distribution: {}", checkResultDistribution());
+        log.info("Seeded due distribution: {}", dueDistribution);
 
         assertThat(counts.get("members")).isEqualTo(memberCount);
         assertThat(counts.get("monitors")).isEqualTo(monitorCount);
@@ -172,18 +182,30 @@ class DatabasePerformanceSeedTests {
                        2,
                        gs % 2,
                        gs % 4,
-                       case
-                           when gs % 20 = 0 then 'PAUSED'
-                           when gs % 7 = 0 then 'DOWN'
-                           else 'ACTIVE'
-                       end,
-                       now() - ((gs % 7200) * interval '1 second'),
-                       case when gs % 100 = 0 then now() else null end,
-                       now() - ((gs % 30) * interval '1 day'),
-                       now()
+                        case
+                            when gs % 20 = 0 then 'PAUSED'
+                            when gs % 7 = 0 then 'DOWN'
+                            else 'ACTIVE'
+                        end,
+                        case
+                            when gs % 20 = 0 then now() + ((gs % 7200) * interval '1 second')
+                            when gs % 7 = 0 then
+                                case
+                                    when gs % 100 < ? then now() - ((gs % 3600) * interval '1 second')
+                                    else now() + ((gs % 7200) * interval '1 second')
+                                end
+                            else
+                                case
+                                    when gs % 100 < ? then now() - ((gs % 3600) * interval '1 second')
+                                    else now() + ((gs % 7200) * interval '1 second')
+                                end
+                        end,
+                        case when gs % 100 = 0 then now() else null end,
+                        now() - ((gs % 30) * interval '1 day'),
+                        now()
                 from generate_series(1, ?) gs
                 join seed_members on seed_members.rn = ((gs - 1) % ?) + 1
-                """, SEED_EMAIL_PATTERN, monitorCount, memberCount);
+                """, SEED_EMAIL_PATTERN, dueMonitorPercent, dueMonitorPercent, monitorCount, memberCount);
     }
 
     private void insertCheckResults() {
@@ -337,27 +359,31 @@ class DatabasePerformanceSeedTests {
                 )
                 select seed_incidents.id,
                        seed_channels.id,
-                       case when gs % 2 = 0 then 'INCIDENT_OPEN' else 'INCIDENT_RESOLVED' end,
-                       case
-                           when gs % 10 in (0, 1) then 'FAILED'
-                           when gs % 10 = 2 then 'RETRY_PENDING'
-                           when gs % 10 in (3, 4, 5, 6) then 'SENT'
-                           else 'PENDING'
-                       end,
-                       case
-                           when gs % 10 in (0, 1, 2) then 1
-                           when gs % 15 = 0 then 2
-                           else 0
-                       end,
-                       2,
-                       case when gs % 10 in (0, 1, 2) then now() - ((gs % 3600) * interval '1 second') else null end,
-                       case when gs % 10 in (0, 1, 2, 3, 4, 5, 6) then now() - ((gs % 3600) * interval '1 second') else null end,
-                       gs % 10 in (0, 1, 2),
-                       case
-                           when gs % 25 = 0 then 'Notification channel is disabled.'
-                           when gs % 10 in (0, 1, 2) then 'Seed send failure'
-                           else null
-                       end,
+                        case when gs % 2 = 0 then 'INCIDENT_OPEN' else 'INCIDENT_RESOLVED' end,
+                        case
+                            when gs % 10 in (0, 1) then 'FAILED'
+                            when gs % 100 < ? then 'RETRY_PENDING'
+                            when gs % 10 in (3, 4, 5, 6) then 'SENT'
+                            else 'PENDING'
+                        end,
+                        case
+                            when gs % 100 < ? then 1
+                            when gs % 15 = 0 then 2
+                            else 0
+                        end,
+                        2,
+                        case when gs % 100 < ? then now() - ((gs % 3600) * interval '1 second') else null end,
+                        case
+                            when gs % 100 < ? then now() - ((gs % 3600) * interval '1 second')
+                            when gs % 10 in (0, 1, 3, 4, 5, 6) then now() - ((gs % 3600) * interval '1 second')
+                            else null
+                        end,
+                        gs % 100 < ?,
+                        case
+                            when gs % 25 = 0 then 'Notification channel is disabled.'
+                            when gs % 100 < ? then 'Seed send failure'
+                            else null
+                        end,
                        case when gs % 10 in (3, 4, 5, 6) then now() - ((gs % 3600) * interval '1 second') else null end,
                        false,
                        null,
@@ -366,7 +392,19 @@ class DatabasePerformanceSeedTests {
                 from generate_series(1, ?) gs
                 join seed_incidents on seed_incidents.rn = ((gs - 1) % ?) + 1
                 join seed_channels on seed_channels.rn = ((gs - 1) % ?) + 1
-                """, SEED_EMAIL_PATTERN, SEED_EMAIL_PATTERN, notificationHistoryCount, incidentCount, memberCount);
+                """,
+                SEED_EMAIL_PATTERN,
+                SEED_EMAIL_PATTERN,
+                retryDueNotificationPercent,
+                retryDueNotificationPercent,
+                retryDueNotificationPercent,
+                retryDueNotificationPercent,
+                retryDueNotificationPercent,
+                retryDueNotificationPercent,
+                notificationHistoryCount,
+                incidentCount,
+                memberCount
+        );
     }
 
     private int countSeedMembers() {
@@ -438,6 +476,50 @@ class DatabasePerformanceSeedTests {
                         "maxPerMonitor", rs.getInt("max_per_monitor"),
                         "avgPerMonitor", rs.getInt("avg_per_monitor")
                 ),
+                SEED_EMAIL_PATTERN
+        );
+    }
+
+    private Map<String, Integer> dueDistribution() {
+        return jdbcTemplate.queryForObject("""
+                with due_monitor_stats as (
+                    select count(*)::int as total_monitors,
+                           count(*) filter (
+                               where monitor.status in ('ACTIVE', 'DOWN')
+                                 and monitor.deleted_at is null
+                                 and monitor.next_check_at <= now()
+                           )::int as due_monitors
+                    from monitors monitor
+                    join member seed_member on seed_member.id = monitor.user_id
+                    where seed_member.email like ?
+                ),
+                retry_due_stats as (
+                    select count(*)::int as total_histories,
+                           count(*) filter (
+                               where history.retryable = true
+                                 and history.next_retry_at is not null
+                                 and history.next_retry_at <= now()
+                                 and history.retry_count < history.max_retry_count
+                           )::int as retry_due_histories
+                    from notification_histories history
+                    join notification_channels channel on channel.id = history.channel_id
+                    join member seed_member on seed_member.id = channel.member_id
+                    where seed_member.email like ?
+                )
+                select due_monitor_stats.total_monitors,
+                       due_monitor_stats.due_monitors,
+                       retry_due_stats.total_histories,
+                       retry_due_stats.retry_due_histories
+                from due_monitor_stats
+                cross join retry_due_stats
+                """,
+                (rs, rowNum) -> Map.of(
+                        "totalMonitors", rs.getInt("total_monitors"),
+                        "dueMonitors", rs.getInt("due_monitors"),
+                        "totalHistories", rs.getInt("total_histories"),
+                        "retryDueHistories", rs.getInt("retry_due_histories")
+                ),
+                SEED_EMAIL_PATTERN,
                 SEED_EMAIL_PATTERN
         );
     }

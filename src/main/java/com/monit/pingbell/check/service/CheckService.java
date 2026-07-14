@@ -50,19 +50,19 @@ public class CheckService {
                 .orElse(null);
 
         if (monitor == null) {
-            log.info("Skip HealthCheckRequested event because monitor does not exist. eventId={}, monitorId={}",
+            log.debug("Skip HealthCheckRequested event because monitor does not exist. eventId={}, monitorId={}",
                     event.eventId(), event.monitorId());
             return Optional.empty();
         }
 
         if (monitor.getStatus() != MonitorStatus.ACTIVE && monitor.getStatus() != MonitorStatus.DOWN) {
-            log.info("Skip HealthCheckRequested event because monitor is not checkable. eventId={}, monitorId={}, status={}",
+            log.debug("Skip HealthCheckRequested event because monitor is not checkable. eventId={}, monitorId={}, status={}",
                     event.eventId(), event.monitorId(), monitor.getStatus());
             return Optional.empty();
         }
 
         if (monitor.getNextCheckAt().isAfter(event.scheduledAt())) {
-            log.info("Skip HealthCheckRequested event because request was already processed. eventId={}, monitorId={}, scheduledAt={}, nextCheckAt={}",
+            log.debug("Skip HealthCheckRequested event because request was already processed. eventId={}, monitorId={}, scheduledAt={}, nextCheckAt={}",
                     event.eventId(), event.monitorId(), event.scheduledAt(), monitor.getNextCheckAt());
             return Optional.empty();
         }

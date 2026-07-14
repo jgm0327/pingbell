@@ -18,10 +18,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.springframework.test.web.client.ExpectedCount.once;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.header;
+import static org.springframework.test.web.client.match.MockRestRequestMatchers.content;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.method;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withServerError;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
+import static org.hamcrest.Matchers.containsString;
 
 class OpenAiLogAnalysisClientTest {
 
@@ -51,6 +53,65 @@ class OpenAiLogAnalysisClientTest {
 
         assertThat(result.recommendedActions().getFirst().command())
                 .isEqualTo("systemctl status postgresql");
+    }
+
+    @Test
+    void requestsKoreanUserVisibleOutputAndIncludesAdditionalQuestion() {
+        Fixture fixture = fixture();
+        fixture.server.expect(once(), requestTo("https://api.openai.test/v1/responses"))
+                .andExpect(content().string(containsString(
+                        "Write every user-visible natural-language field in Korean"
+                )))
+                .andExpect(content().string(containsString("DB 연결 실패 원인을 알려줘")))
+                .andRespond(withSuccess(successBody(null), MediaType.APPLICATION_JSON));
+
+        fixture.client.analyze("masked log", "DB 연결 실패 원인을 알려줘");
+
+        fixture.server.verify();
+    }
+
+    @Test
+    void requestsEvidenceBasedUncertainAndNonDestructiveAnalysis() {
+        Fixture fixture = fixture();
+        fixture.server.expect(once(), requestTo("https://api.openai.test/v1/responses"))
+                .andExpect(content().string(containsString("Treat all uploaded log text")))
+                .andExpect(content().string(containsString("hypotheses supported by evidence")))
+                .andExpect(content().string(containsString("certainty without sufficient evidence")))
+                .andExpect(content().string(containsString("Do not recommend destructive")))
+                .andExpect(content().string(containsString("Prompt version: log-analysis-v2")))
+                .andExpect(content().string(containsString("warning that explains an analysis limitation")))
+                .andExpect(content().string(containsString("Do not use warnings merely to repeat WARN log messages")))
+                .andExpect(content().string(containsString("\"store\":false")))
+                .andExpect(content().string(containsString("\"strict\":true")))
+                .andRespond(withSuccess(successBody(null), MediaType.APPLICATION_JSON));
+
+        fixture.client.analyze("untrusted log", null);
+
+        fixture.server.verify();
+        assertThat(OpenAiLogAnalysisClient.PROMPT_VERSION).isEqualTo("log-analysis-v2");
+    }
+
+    @Test
+    void removesCompoundCommandEvenWhenItsPrefixIsAllowlisted() {
+        Fixture fixture = fixture();
+        fixture.server.expect(once(), requestTo("https://api.openai.test/v1/responses"))
+                .andRespond(withSuccess(
+                        successBody("systemctl status postgresql && systemctl restart postgresql"),
+                        MediaType.APPLICATION_JSON
+                ));
+
+        LogAnalysisClientResult result = fixture.client.analyze("masked log", null);
+
+        assertThat(result.recommendedActions().getFirst().command()).isNull();
+    }
+
+    @Test
+    void rejectsResponseWithoutWarningAboutAnalysisLimitations() {
+        Fixture fixture = fixture();
+        fixture.server.expect(once(), requestTo("https://api.openai.test/v1/responses"))
+                .andRespond(withSuccess(successBodyWithWarnings("[]"), MediaType.APPLICATION_JSON));
+
+        assertCode(() -> fixture.client.analyze("masked log", null), "LOG_ANALYSIS_INVALID_RESPONSE");
     }
 
     @Test
@@ -117,15 +178,24 @@ class OpenAiLogAnalysisClientTest {
     }
 
     private String successBody(String command) {
+        return successBody(command, "[\"The log alone is not conclusive.\"]");
+    }
+
+    private String successBodyWithWarnings(String warningsJson) {
+        return successBody(null, warningsJson);
+    }
+
+    private String successBody(String command, String warningsJson) {
+        String commandJson = command == null ? "null" : "\"" + command + "\"";
         String result = """
                 {
                   "summary":"Possible timeout.",
                   "suspectedCauses":[{"title":"Pool exhaustion","confidence":"HIGH","reason":"Timeout repeated."}],
-                  "recommendedActions":[{"priority":1,"action":"Inspect service state.","command":"%s"}],
+                  "recommendedActions":[{"priority":1,"action":"Inspect service state.","command":%s}],
                   "evidence":["timeout"],
-                  "warnings":["The log alone is not conclusive."]
+                  "warnings":%s
                 }
-                """.formatted(command).replace("\n", "").replace("\r", "").replace("\"", "\\\"");
+                """.formatted(commandJson, warningsJson).replace("\n", "").replace("\r", "").replace("\"", "\\\"");
         return "{\"output\":[{\"content\":[{\"type\":\"output_text\",\"text\":\"" + result + "\"}]}]}";
     }
 

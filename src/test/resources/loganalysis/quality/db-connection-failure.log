@@ -1,0 +1,6 @@
+2026-07-14T11:20:31.002+09:00 INFO  [member-api] Starting transaction operation=findMember
+2026-07-14T11:20:31.814+09:00 WARN  [member-api] HikariPool-1 - Connection is not available, request timed out after 800ms
+2026-07-14T11:20:31.815+09:00 ERROR [member-api] org.postgresql.util.PSQLException: Connection to db.internal:5432 refused. SQLState=08001
+2026-07-14T11:20:31.815+09:00 ERROR [member-api] Check that the hostname and port are correct and that the postmaster is accepting TCP/IP connections.
+2026-07-14T11:20:32.622+09:00 WARN  [member-api] HikariPool-1 stats total=10 active=10 idle=0 waiting=7
+2026-07-14T11:20:32.623+09:00 ERROR [member-api] Request failed operation=findMember cause=CannotGetJdbcConnectionException
