@@ -1,5 +1,6 @@
 package com.monit.pingbell.global.exception;
 
+import com.monit.pingbell.loganalysis.exception.LogAnalysisException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -7,6 +8,7 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
@@ -14,6 +16,38 @@ import java.util.stream.Collectors;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    @ExceptionHandler(LogAnalysisException.class)
+    public ResponseEntity<ErrorResponse> handleLogAnalysisException(
+            LogAnalysisException e,
+            HttpServletRequest request
+    ) {
+        return ResponseEntity.status(e.getStatus()).body(
+                new ErrorResponse(
+                        LocalDateTime.now(),
+                        e.getStatus().value(),
+                        e.getCode(),
+                        e.getMessage(),
+                        request.getRequestURI()
+                )
+        );
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ErrorResponse> handleMaxUploadSizeExceededException(
+            MaxUploadSizeExceededException e,
+            HttpServletRequest request
+    ) {
+        return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE).body(
+                new ErrorResponse(
+                        LocalDateTime.now(),
+                        HttpStatus.PAYLOAD_TOO_LARGE.value(),
+                        "LOG_FILE_TOO_LARGE",
+                        "The log file must not exceed 5 MB.",
+                        request.getRequestURI()
+                )
+        );
+    }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ErrorResponse> handleValidationException(
