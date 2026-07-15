@@ -3,7 +3,7 @@ spring:
     import: optional:file:.env[.properties]
 
   datasource:
-    url: jdbc:postgresql://localhost:${POSTGRES_PORT:5432}/${POSTGRES_DB:pingbell}
+    url: jdbc:postgresql://${POSTGRES_HOST:127.0.0.1}:${POSTGRES_PORT:5432}/${POSTGRES_DB:pingbell}
     username: ${POSTGRES_USER:pingbell}
     password: ${POSTGRES_PASSWORD:pingbell1234!!}
     driver-class-name: org.postgresql.Driver
@@ -24,6 +24,89 @@ spring:
     enabled: true
     locations: classpath:db/migration
 
+  mail:
+    host: ${MAIL_HOST:localhost}
+    port: ${MAIL_PORT:1025}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: ${MAIL_SMTP_AUTH:false}
+          starttls:
+            enable: ${MAIL_SMTP_STARTTLS_ENABLE:false}
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      timeout: 2s
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      group-id: ${PINGBELL_KAFKA_CONSUMER_GROUP_ID:pingbell-check-worker}
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: com.monit.pingbell.check.scheduler.event,com.monit.pingbell.notification.event
+        spring.json.value.default.type: com.monit.pingbell.check.scheduler.event.HealthCheckRequestedEvent
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 6MB
+
 jwt:
-  secret: pingbell0327pingbell0327pingbell0327!!!
-  access-token-expiration-ms: 3600000
+  secret: ${JWT_SECRET}
+  access-token-expiration-ms: 360000
+  refresh-token-expiration-ms: ${JWT_REFRESH_TOKEN_EXPIRATION_MS:1209600000}
+  remember-me-refresh-token-expiration-ms: ${JWT_REMEMBER_ME_REFRESH_TOKEN_EXPIRATION_MS:2592000000}
+
+pingbell:
+  log-analysis:
+    ai:
+      api-key: ${LOG_ANALYSIS_AI_API_KEY}
+      base-url: ${LOG_ANALYSIS_AI_BASE_URL:https://api.openai.com/v1/}
+      model: ${LOG_ANALYSIS_AI_MODEL}
+      timeout-seconds: ${LOG_ANALYSIS_AI_TIMEOUT_SECONDS:30}
+  kafka:
+    consumer:
+      retry:
+        backoff-interval-ms: ${PINGBELL_KAFKA_CONSUMER_RETRY_BACKOFF_INTERVAL_MS:1000}
+        max-retries: ${PINGBELL_KAFKA_CONSUMER_RETRY_MAX_RETRIES:2}
+  check:
+    dispatch-mode: ${PINGBELL_CHECK_DISPATCH_MODE:direct}
+    kafka:
+      consumer:
+        group-id: ${PINGBELL_KAFKA_CONSUMER_GROUP_ID:pingbell-check-worker}
+      topic:
+        health-check-requested: ${PINGBELL_KAFKA_TOPIC_HEALTH_CHECK_REQUESTED:pingbell.health-check.requested}
+        health-check-completed: ${PINGBELL_KAFKA_TOPIC_HEALTH_CHECK_COMPLETED:pingbell.health-check.completed}
+        notification-requested: ${PINGBELL_KAFKA_TOPIC_NOTIFICATION_REQUESTED:pingbell.notification.requested}
+  notification:
+    retry:
+      scheduler-interval-ms: ${PINGBELL_NOTIFICATION_RETRY_SCHEDULER_INTERVAL_MS:30000}
+      incident-open:
+        immediate-retry: ${PINGBELL_NOTIFICATION_RETRY_INCIDENT_OPEN_IMMEDIATE_RETRY:true}
+        max-retry-count: ${PINGBELL_NOTIFICATION_RETRY_INCIDENT_OPEN_MAX_RETRY_COUNT:4}
+        backoffs: ${PINGBELL_NOTIFICATION_RETRY_INCIDENT_OPEN_BACKOFFS:30s,1m,3m}
+      incident-resolved:
+        immediate-retry: ${PINGBELL_NOTIFICATION_RETRY_INCIDENT_RESOLVED_IMMEDIATE_RETRY:false}
+        max-retry-count: ${PINGBELL_NOTIFICATION_RETRY_INCIDENT_RESOLVED_MAX_RETRY_COUNT:2}
+        backoffs: ${PINGBELL_NOTIFICATION_RETRY_INCIDENT_RESOLVED_BACKOFFS:1m,5m}
+    kafka:
+      consumer:
+        group-id: ${PINGBELL_NOTIFICATION_WORKER_GROUP_ID:pingbell-notification-worker}
+  security:
+    notification-target-key: ${NOTIFICATION_TARGET_ENCRYPTION_KEY:${JWT_SECRET:}}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,metrics

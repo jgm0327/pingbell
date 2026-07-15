@@ -1,6 +1,8 @@
 package com.monit.pingbell.auth.controller;
 
 import com.monit.pingbell.auth.dto.LoginRequest;
+import com.monit.pingbell.auth.dto.LogoutRequest;
+import com.monit.pingbell.auth.dto.RefreshTokenRequest;
 import com.monit.pingbell.auth.dto.SignupRequest;
 import com.monit.pingbell.auth.dto.TokenResponse;
 import com.monit.pingbell.auth.service.AuthService;
@@ -31,5 +33,16 @@ public class AuthController {
     @PostMapping("/login")
     public TokenResponse login(@Valid @RequestBody LoginRequest request) {
         return authService.login(request);
+    }
+
+    @PostMapping("/refresh")
+    public TokenResponse refresh(@Valid @RequestBody RefreshTokenRequest request) {
+        return authService.refresh(request);
+    }
+
+    @PostMapping("/logout")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void logout(@Valid @RequestBody LogoutRequest request) {
+        authService.logout(request);
     }
 }

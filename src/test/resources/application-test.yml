@@ -1,0 +1,37 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:pingbell-test;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.H2Dialect
+    open-in-view: false
+
+  flyway:
+    enabled: false
+
+jwt:
+  secret: test-jwt-secret-key-for-pingbell-context-loads
+  access-token-expiration-ms: 3600000
+  refresh-token-expiration-ms: 1209600000
+  remember-me-refresh-token-expiration-ms: 2592000000
+
+pingbell:
+  check:
+    dispatch-mode: kafka
+    kafka:
+      consumer:
+        group-id: pingbell-check-worker-test
+        retry:
+          backoff-interval-ms: 0
+          max-retries: 2
+      topic:
+        health-check-requested: pingbell.health-check.requested
+  security:
+    notification-target-key: test-notification-target-encryption-key
