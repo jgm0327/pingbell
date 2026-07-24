@@ -14,6 +14,10 @@ spring:
     enabled: true
     locations: classpath:db/migration
 
+  kafka:
+    listener:
+      auto-startup: false
+
 jwt:
   secret: test-jwt-secret-key-for-pingbell-migration-test
   access-token-expiration-ms: 3600000
