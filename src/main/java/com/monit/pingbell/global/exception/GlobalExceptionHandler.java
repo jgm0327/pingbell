@@ -1,7 +1,9 @@
 package com.monit.pingbell.global.exception;
 
 import com.monit.pingbell.loganalysis.exception.LogAnalysisException;
+import com.monit.pingbell.runbook.exception.RunbookException;
 import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
@@ -16,6 +18,12 @@ import java.util.stream.Collectors;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    @ExceptionHandler(RunbookException.class)
+    public ResponseEntity<ErrorResponse> handleRunbookException(RunbookException e, HttpServletRequest request) {
+        return ResponseEntity.status(e.getStatus()).body(new ErrorResponse(
+                LocalDateTime.now(), e.getStatus().value(), e.getCode(), e.getMessage(), request.getRequestURI()));
+    }
 
     @ExceptionHandler(LogAnalysisException.class)
     public ResponseEntity<ErrorResponse> handleLogAnalysisException(
@@ -67,6 +75,15 @@ public class GlobalExceptionHandler {
                         request.getRequestURI()
                 )
         );
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ErrorResponse> handleUnreadableRequest(
+            HttpMessageNotReadableException e, HttpServletRequest request
+    ) {
+        return ResponseEntity.badRequest().body(new ErrorResponse(
+                LocalDateTime.now(), HttpStatus.BAD_REQUEST.value(), "VALIDATION_ERROR",
+                "The request body is malformed or contains an unsupported value.", request.getRequestURI()));
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
