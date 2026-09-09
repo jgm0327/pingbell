@@ -4,7 +4,7 @@
 
 ## 1. 목적
 
-이 문서는 `docs/event-boundary.md`에서 정의한 이벤트 경계를 바탕으로 현재 `CheckScheduler`와 `CheckService.healthCheck`의 책임을 Check Worker 분리 관점에서 정리한다.
+이 문서는 `docs/architecture/event-boundary.md`에서 정의한 이벤트 경계를 바탕으로 현재 `CheckScheduler`와 `CheckService.healthCheck`의 책임을 Check Worker 분리 관점에서 정리한다.
 
 이번 작업은 설계 문서 작업이다. Kafka, message producer, message consumer, 별도 Worker 애플리케이션은 구현하지 않는다.
 

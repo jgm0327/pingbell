@@ -8,12 +8,12 @@
 
 | 문서 | 내용 |
 | --- | --- |
-| [overview.md](dlq/overview.md) | 목적, 현재 원칙, 용어 |
-| [failure-classification.md](dlq/failure-classification.md) | 실패 분류와 DLQ 후보 |
-| [payload-security.md](dlq/payload-security.md) | payload와 민감 정보 기준 |
-| [reprocessing-policy.md](dlq/reprocessing-policy.md) | 재처리 판단과 실행 정책 |
-| [operation-guide.md](dlq/operation-guide.md) | command 실행 절차 |
-| [operation-logs.md](dlq/operation-logs.md) | 로그 필드와 추적 방법 |
+| [overview.md](overview.md) | 목적, 현재 원칙, 용어 |
+| [failure-classification.md](failure-classification.md) | 실패 분류와 DLQ 후보 |
+| [payload-security.md](payload-security.md) | payload와 민감 정보 기준 |
+| [reprocessing-policy.md](reprocessing-policy.md) | 재처리 판단과 실행 정책 |
+| [operation-guide.md](operation-guide.md) | command 실행 절차 |
+| [operation-logs.md](operation-logs.md) | 로그 필드와 추적 방법 |
 
 ## 현재 결론
 

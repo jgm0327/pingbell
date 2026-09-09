@@ -254,6 +254,6 @@ Backend Issue 1인 `NotificationHistory 재시도 상태와 필드 추가`, Issu
 
 추가로 알림 중요도별 재시도 정책이 적용되어, 알림 이력 화면은 `FAILED + retryable=true + nextRetryAt` 항목을 최종 실패가 아닌 재시도 예정으로 표시한다.
 
-알림 재시도 수동 재전송 정책 설계는 `docs/manual-notification-resend-policy.md`에 정리했다.
+알림 재시도 수동 재전송 정책 설계는 `docs/policies/manual-notification-resend-policy.md`에 정리했다.
 
 그 다음 순서는 `NotificationHistory 수동 재전송 메타 필드 추가`다.
