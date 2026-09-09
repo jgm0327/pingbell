@@ -32,6 +32,31 @@ class LogPreprocessorTest {
     }
 
     @Test
+    void masksKnownVendorSecretsAndKoreanPii() {
+        String raw = """
+                OpenAI key leaked: sk-proj-abcdefghijklmnopqrstuvwxyz0123456789
+                Slack token: xoxb-FAKE-TEST-VALUE-NOT-A-REAL-SLACK-TOKEN
+                GitHub token: ghp_1234567890abcdefghijklmnopqrstuvwx
+                AWS access key: AKIAABCDEFGHIJKLMNOP
+                Google API key: AIzaSyD1234567890abcdefghijklmnopqrst
+                phone=010-1234-5678 rrn=901231-1234567 card=1234-5678-9012-3456
+                """;
+
+        String result = preprocessor.process(raw).content();
+
+        assertThat(result).doesNotContain(
+                "sk-proj-abcdefghijklmnopqrstuvwxyz0123456789",
+                "xoxb-FAKE-TEST-VALUE-NOT-A-REAL-SLACK-TOKEN",
+                "ghp_1234567890abcdefghijklmnopqrstuvwx",
+                "AKIAABCDEFGHIJKLMNOP",
+                "AIzaSyD1234567890abcdefghijklmnopqrst",
+                "010-1234-5678",
+                "901231-1234567",
+                "1234-5678-9012-3456"
+        );
+    }
+
+    @Test
     void keepsOnlyLastTwoThousandLines() {
         String raw = IntStream.rangeClosed(1, 2_100)
                 .mapToObj(number -> "line-" + number)
