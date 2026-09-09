@@ -143,6 +143,7 @@ gradle-app.setting
 *.hprof
 
 .env*
+!.env.example
 
 AGENTS.md
 docs/agents
@@ -150,6 +151,13 @@ docs/status
 test-target-server
 frontend
 frontend-dev.log
+docs/tistory
+docs/status
+.claude
+
+# Local-only manual verification harness for the log ingestion feature - fluent-bit.conf embeds a
+# real, live pgbl_... API key (see docs/ai/log-ingestion-implementation-issues.md).
+fluent-bit-test
 
 
 # End of https://www.toptal.com/developers/gitignore/api/windows,intellij+all,gradle
