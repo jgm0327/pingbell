@@ -10,6 +10,7 @@ public record LogAnalysisClientResult(
         List<SuspectedCauseResponse> suspectedCauses,
         List<RecommendedActionResponse> recommendedActions,
         List<String> evidence,
-        List<String> warnings
+        List<String> warnings,
+        List<String> referencedRunbookChunkIds
 ) {
 }

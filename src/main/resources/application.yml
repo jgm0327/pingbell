@@ -74,6 +74,19 @@ pingbell:
       base-url: ${LOG_ANALYSIS_AI_BASE_URL:https://api.openai.com/v1/}
       model: ${LOG_ANALYSIS_AI_MODEL}
       timeout-seconds: ${LOG_ANALYSIS_AI_TIMEOUT_SECONDS:30}
+    runbook:
+      enabled: ${LOG_ANALYSIS_RUNBOOK_ENABLED:true}
+      top-k: ${LOG_ANALYSIS_RUNBOOK_TOP_K:3}
+      minimum-relevance: ${LOG_ANALYSIS_RUNBOOK_MINIMUM_RELEVANCE:0.5}
+      max-context-chunks: ${LOG_ANALYSIS_RUNBOOK_MAX_CONTEXT_CHUNKS:3}
+      max-context-characters: ${LOG_ANALYSIS_RUNBOOK_MAX_CONTEXT_CHARACTERS:6000}
+      max-query-characters: ${LOG_ANALYSIS_RUNBOOK_MAX_QUERY_CHARACTERS:4000}
+  log-ingestion:
+    buffer-max-lines: ${LOG_INGESTION_BUFFER_MAX_LINES:500}
+    buffer-ttl-seconds: ${LOG_INGESTION_BUFFER_TTL_SECONDS:900}
+    max-request-bytes: ${LOG_INGESTION_MAX_REQUEST_BYTES:524288}
+    max-requests-per-minute: ${LOG_INGESTION_MAX_REQUESTS_PER_MINUTE:60}
+    public-base-url: ${LOG_INGESTION_PUBLIC_BASE_URL:http://localhost:8080}
   kafka:
     consumer:
       retry:

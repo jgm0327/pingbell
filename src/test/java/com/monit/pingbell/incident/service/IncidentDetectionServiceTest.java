@@ -49,6 +49,9 @@ class IncidentDetectionServiceTest {
     private NotificationDispatchService notificationDispatchService;
 
     @Mock
+    private IncidentLogAnalysisTriggerService incidentLogAnalysisTriggerService;
+
+    @Mock
     private PingbellMetrics metrics;
 
     @InjectMocks
@@ -76,6 +79,8 @@ class IncidentDetectionServiceTest {
         assertThat(incidentCaptor.getValue().getLastErrorMessage()).isEqualTo("HTTP 500");
         assertThat(monitor.getStatus()).isEqualTo(MonitorStatus.DOWN);
         verify(notificationDispatchService).dispatch(incidentCaptor.getValue(), NotificationType.INCIDENT_OPEN, now);
+        verify(incidentLogAnalysisTriggerService)
+                .analyzeAfterIncidentOpened(incidentCaptor.getValue().getId(), 20L, 10L, now);
     }
 
     @Test
@@ -131,6 +136,7 @@ class IncidentDetectionServiceTest {
         assertThat(incident.getResolvedAt()).isEqualTo(now);
         assertThat(monitor.getStatus()).isEqualTo(MonitorStatus.ACTIVE);
         verify(notificationDispatchService).dispatch(incident, NotificationType.INCIDENT_RESOLVED, now);
+        verify(incidentLogAnalysisTriggerService, never()).analyzeAfterIncidentOpened(any(), any(), any(), any());
     }
 
     private HealthCheckCompletedEvent event(Long monitorId, Long memberId, Long checkResultId) {

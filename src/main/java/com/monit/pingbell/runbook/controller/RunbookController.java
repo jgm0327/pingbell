@@ -2,6 +2,7 @@ package com.monit.pingbell.runbook.controller;
 
 import com.monit.pingbell.global.security.auth.AuthenticatedMember;
 import com.monit.pingbell.runbook.dto.*;
+import com.monit.pingbell.runbook.embedding.RunbookEmbeddingService;
 import com.monit.pingbell.runbook.service.RunbookService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -16,6 +17,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class RunbookController {
     private final RunbookService runbookService;
+    private final RunbookEmbeddingService runbookEmbeddingService;
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
@@ -48,5 +50,14 @@ public class RunbookController {
                                         @PathVariable String documentId, @PathVariable int version,
                                         @Valid @RequestBody RunbookStatusUpdateRequest request) {
         return runbookService.updateStatus(member.id(), documentId, version, request);
+    }
+
+    // Development/testing convenience: the create/activate flow does not yet trigger embedding
+    // indexing automatically, so this lets an ACTIVE revision be manually (re)indexed for search.
+    @PostMapping("/{documentId}/versions/{version}/reindex")
+    public RunbookReindexResponse reindex(@AuthenticationPrincipal AuthenticatedMember member,
+                                          @PathVariable String documentId, @PathVariable int version) {
+        List<?> chunks = runbookEmbeddingService.reindex(member.id(), documentId, version);
+        return new RunbookReindexResponse(chunks.size());
     }
 }

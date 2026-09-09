@@ -1,6 +1,8 @@
 package com.monit.pingbell.global.exception;
 
 import com.monit.pingbell.loganalysis.exception.LogAnalysisException;
+import com.monit.pingbell.logingestion.exception.LogIngestionException;
+import com.monit.pingbell.runbook.embedding.RunbookEmbeddingException;
 import com.monit.pingbell.runbook.exception.RunbookException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -21,6 +23,24 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(RunbookException.class)
     public ResponseEntity<ErrorResponse> handleRunbookException(RunbookException e, HttpServletRequest request) {
+        return ResponseEntity.status(e.getStatus()).body(new ErrorResponse(
+                LocalDateTime.now(), e.getStatus().value(), e.getCode(), e.getMessage(), request.getRequestURI()));
+    }
+
+    @ExceptionHandler(RunbookEmbeddingException.class)
+    public ResponseEntity<ErrorResponse> handleRunbookEmbeddingException(
+            RunbookEmbeddingException e, HttpServletRequest request
+    ) {
+        HttpStatus status = "RUNBOOK_ACTIVE_REVISION_NOT_FOUND".equals(e.getCode())
+                ? HttpStatus.NOT_FOUND : HttpStatus.BAD_GATEWAY;
+        return ResponseEntity.status(status).body(new ErrorResponse(
+                LocalDateTime.now(), status.value(), e.getCode(), e.getMessage(), request.getRequestURI()));
+    }
+
+    @ExceptionHandler(LogIngestionException.class)
+    public ResponseEntity<ErrorResponse> handleLogIngestionException(
+            LogIngestionException e, HttpServletRequest request
+    ) {
         return ResponseEntity.status(e.getStatus()).body(new ErrorResponse(
                 LocalDateTime.now(), e.getStatus().value(), e.getCode(), e.getMessage(), request.getRequestURI()));
     }

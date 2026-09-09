@@ -29,6 +29,7 @@ public class IncidentDetectionService {
     private final IncidentRepository incidentRepository;
     private final IncidentDetectionProcessedCheckResultRepository processedRepository;
     private final NotificationDispatchService notificationDispatchService;
+    private final IncidentLogAnalysisTriggerService incidentLogAnalysisTriggerService;
     private final PingbellMetrics metrics;
 
     @Transactional
@@ -95,6 +96,7 @@ public class IncidentDetectionService {
                 monitor.markDown();
                 metrics.recordIncidentOpened();
                 notifyIncidentOpened(incident, now);
+                triggerAutomaticLogAnalysis(incident, monitor, now);
             }
         }
     }
@@ -122,6 +124,15 @@ public class IncidentDetectionService {
         try {
             notificationDispatchService.dispatch(incident, NotificationType.INCIDENT_RESOLVED, now);
         } catch (Exception ignored) {
+        }
+    }
+
+    private void triggerAutomaticLogAnalysis(Incident incident, Monitor monitor, LocalDateTime now) {
+        try {
+            incidentLogAnalysisTriggerService.analyzeAfterIncidentOpened(
+                    incident.getId(), monitor.getMember().getId(), monitor.getId(), now);
+        } catch (Exception ignored) {
+            // Best-effort automatic analysis - must never affect Incident detection or notifications.
         }
     }
 }

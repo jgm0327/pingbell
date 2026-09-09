@@ -4,6 +4,7 @@ import com.monit.pingbell.global.security.jwt.JwtTokenProvider;
 import com.monit.pingbell.loganalysis.dto.Confidence;
 import com.monit.pingbell.loganalysis.dto.LogAnalysisResponse;
 import com.monit.pingbell.loganalysis.dto.RecommendedActionResponse;
+import com.monit.pingbell.loganalysis.dto.RunbookReferenceResponse;
 import com.monit.pingbell.loganalysis.dto.SuspectedCauseResponse;
 import com.monit.pingbell.loganalysis.exception.LogAnalysisException;
 import com.monit.pingbell.loganalysis.service.LogAnalysisService;
@@ -61,6 +62,7 @@ class LogAnalysisControllerTest {
                 .andExpect(jsonPath("$.summary").value("Possible DB timeout."))
                 .andExpect(jsonPath("$.suspectedCauses[0].confidence").value("HIGH"))
                 .andExpect(jsonPath("$.recommendedActions[0].priority").value(1))
+                .andExpect(jsonPath("$.references[0].documentId").value("doc-1"))
                 .andExpect(jsonPath("$.truncated").value(false))
                 .andExpect(jsonPath("$.originalSizeBytes").value(42))
                 .andExpect(jsonPath("$.analyzedCharacters").value(42));
@@ -98,6 +100,7 @@ class LogAnalysisControllerTest {
                 List.of(new RecommendedActionResponse(1, "Inspect pool usage.", null)),
                 List.of("connection timeout"),
                 List.of("Additional checks are required."),
+                List.of(new RunbookReferenceResponse("doc-1", "DB Timeout Runbook", 3)),
                 false,
                 42,
                 42

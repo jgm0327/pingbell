@@ -45,7 +45,9 @@ public class LogPreprocessor {
         return new ProcessedLog(selected, truncated, selected.length());
     }
 
-    String mask(String value) {
+    // Public: also called from com.monit.pingbell.logingestion to mask log lines before they
+    // ever reach the short-lived ingestion buffer.
+    public String mask(String value) {
         if (value == null) {
             return null;
         }
