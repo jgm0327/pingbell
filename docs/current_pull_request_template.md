@@ -1,47 +1,47 @@
 ## 작업 내용
 
-정식 Frontend(`docs/planning/frontend-implementation-issues.md`)의 남은 Issue F2~F6을 전부 구현했다. F1(로그인/회원가입)만 있던 상태에서, 대시보드/Monitor CRUD/체크결과/장애이력/자동 로그분석/알림 채널/알림 이력/로그 분석 업로드/Log Ingestion API Key 관리까지 이어붙여서 계획된 화면이 모두 실구현으로 바뀌었다.
+`docs/ai/rag-implementation-issues.md`의 Issue 6(합성 fixture 기반 RAG 전후 품질 평가)을 구현했다. 이미 완료된 RAG context/reference 연결(Issue 5)이 실제로 로그 분석 품질을 개선하는지, reference 오류나 교차 tenant 노출 같은 부작용은 없는지를 기존 4개 합성 fixture와 기존 0/1/2 rubric(`docs/ai/log-analysis-quality-evaluation.md`)으로 측정했다.
 
 ## 변경 사항
 
-- **F2**: `features/monitor/*`, `pages/{DashboardPage,MonitorListPage,MonitorFormPage,MonitorDetailPage}.tsx`. Monitor CRUD 전체 연동 + 대시보드 요약 카드.
-- **F3**: `features/check-result/*`, `features/incident/*`. 체크 결과 페이지네이션 테이블, 장애 이력 필터, Incident별 자동 로그분석 패널(PROCESSING 폴링).
-- **F4**: `features/notification-channel/*`, `features/notification-history/*`, `pages/NotificationChannelPage.tsx`. 채널 CRUD(실제로는 soft-disable + 수정 시 재활성화) + 발송 이력 조회/재전송.
-- **F5**: `features/log-analysis/*`. `.log/.txt` 업로드 + 선택적 질문 → AI 분석 결과 표시. `LogAnalysisResultView`를 F3의 자동 분석 패널과 공유.
-- **F6**: `features/log-ingestion-api-key/*`. Monitor별 API Key 발급(1회성 원문 + fluent-bit.conf/docker-compose 스니펫 복사)·목록·폐기.
-- 공용: `shared/components/{LoadingSpinner,ErrorState,EmptyState,StatusBadge,MetricCard,PageHeader,ConfirmModal,CopyButton}.tsx`, `shared/api/types.ts`(`PageResponse<T>` 추가), `shared/utils/duration.ts`.
-- 버그 수정 2건 (아래 "고민한 점" 참고): `AppProviders.tsx`의 QueryClient `networkMode: 'always'`, `NotificationChannelRow`의 수정 폼 리셋.
-- 이제 아무 곳에서도 안 쓰는 `shared/components/ComingSoon.tsx` 삭제.
+- **fixture 공유 클래스 정리**: `LogAnalysisQualityFixtureTest`에 있던 `scenarios.json`/`.log` 로딩 로직을 `QualityScenario`(record), `QualityFixtures`(로더)로 분리해 새 테스트와 공유하도록 리팩터링.
+- **`RagReferenceIntegrationTest`(신규, 기본 CI)**: mock 기반 회귀 테스트. `LogAnalysisService`가 (스크립트로 조작한) 모델의 인용 chunk id 전체를 그대로 노출하지 않고 `RunbookReferenceValidator`가 승인한 것만 응답에 담는지, Runbook 검색이 빈 결과일 때도 안전하게 fallback 하는지 검증한다. 외부 API를 호출하지 않으므로 항상 실행된다.
+- **`RagQualityEvaluationTest`(신규, `LOG_ANALYSIS_AI_API_KEY` 있을 때만 실행)**: 4개 fixture 각각에 직접 작성한 Runbook context chunk 1개를 실제로 주입해 실 모델(`gpt-4o-mini`)을 2회씩(총 8회) 호출한다. 매 실행마다 구조화 응답 완전성, reference가 실제 제공 context로만 구성되는지, 프롬프트에 없는 decoy chunk id를 인용하지 않는지(교차 tenant 노출 방지)를 자동으로 검증한다.
+- **`docs/ai/rag-quality-evaluation.md`(신규)**: 위 실제 모델 평가 8회의 점수·실패 사유 코드를 기록하고, 기존 비-RAG 기준선(2026-07-14)과 비교했다. 개선된 부분(db-connection-failure, out-of-memory의 조치 순서)과 개선되지 않은 부분(http-5xx의 근거 인용·확신도 표현이 오히려 소폭 하락)을 그대로 기록했다.
+- **`docs/ai/rag-implementation-issues.md`**: Issue 6을 완료로 표시.
 
 ## API 계약
 
-- 신규 백엔드 변경 없음. 기존 엔드포인트만 사용: `/api/monitors/**`, `/api/monitors/{id}/checks`, `/api/incidents/**`, `/api/monitors/{id}/incidents`, `/api/notification-channels/**`, `/api/notification-histories/**`, `/api/v1/monitors/{id}/log-analyses`, `/api/monitors/{id}/api-keys/**`.
-- 프론트 타입은 전부 실제 백엔드 DTO/enum을 코드로 직접 확인하고 그대로 미러링했다(`docs/agents/frontend-agent.md` §16).
+- API 변경 없음. 기존 `LogAnalysisService`/`LogAnalysisClient`/`RunbookContextService`/`RunbookReferenceValidator` 계약을 그대로 사용해 평가만 추가했다.
+- Frontend 영향 없음.
 
 ## 테스트 결과
 
-- [x] `npx tsc -b`
-- [x] `npm run build`
-- [x] **실제 Docker Compose 백엔드 + 실제 브라우저 end-to-end 확인**: Monitor CRUD, 체크 결과(실 데이터 715건) 페이지네이션, 장애 이력 필터, 알림 채널 CRUD + mailpit 실제 테스트 발송, 로그 업로드로 **실제 OpenAI 응답** 렌더링, API Key 발급/복사/폐기까지 전부 브라우저로 클릭해서 확인.
+- [x] `./gradlew.bat compileTestJava`
+- [x] `./gradlew.bat test --tests "com.monit.pingbell.loganalysis.*"` — 전부 통과, `RagQualityEvaluationTest`는 `LOG_ANALYSIS_AI_API_KEY` 없이 실행 시 자동 skip.
+- [x] `LOG_ANALYSIS_AI_API_KEY`를 설정한 로컬 환경에서 `RagQualityEvaluationTest` 실제 실행 — 8회 모두 통과(잘못된 reference 0건, 교차 tenant 노출 0건, 안전성 hard failure 0건).
 
 ## 수동 테스트 방법
 
-```bash
-docker compose up -d          # 백엔드 :8080 (+ postgres/redis/kafka/mailpit)
-cd frontend && npm install && npm run dev   # :5173
-```
+```powershell
+# 기본 CI (API Key 불필요)
+.\gradlew.bat test --tests "com.monit.pingbell.loganalysis.*"
 
-회원가입 → Monitor 등록(대상 URL은 `docker compose up -d mock-server` 후 `http://mock-server:4000/health` 추천) → 대시보드/모니터 목록/상세/장애 이력/알림 채널/로그 분석 업로드를 순서대로 눌러보면 된다.
+# 실제 모델 평가 (API Key 필요, 기본 CI와 분리)
+$env:LOG_ANALYSIS_AI_API_KEY="..."
+.\gradlew.bat test --tests "com.monit.pingbell.loganalysis.quality.RagQualityEvaluationTest"
+```
 
 ## 고민한 점
 
-- TanStack Query 기본 `networkMode: 'online'`이 (주로 백그라운드 tab 상태에서) 쿼리를 `fetchStatus: 'paused'`로 무기한 대기시키는 걸 발견했다. `navigator.onLine`은 `true`인데도 발생해서 `onlineManager`의 이벤트 기반 추적이 실제 상태와 어긋난 것으로 보인다. 이 앱은 자체 백엔드와만 통신하는 단일 오리진이라 오프라인 사전 차단이 의미 없다고 보고 `networkMode: 'always'`로 바꿨다.
-- 알림 채널 인라인 수정 폼에서 `useForm`이 컴포넌트 레벨에 살아있어 폼 JSX가 unmount/remount돼도 리셋이 안 되는 버그를 발견 — 재오픈 시 `reset({ target: '' })`을 호출하도록 고쳤다.
-- 로그 분석 결과(`LogAnalysisResponse`)를 자동 분석(Incident)과 수동 업로드(F5) 두 곳에서 똑같이 써야 해서, 렌더링 로직을 `features/log-analysis/LogAnalysisResultView.tsx`로 뽑아 공유했다.
+- `LogPreprocessor.process(String)`은 package-private이라 평가 테스트가 있는 `quality` 패키지에서 호출할 수 없었다. 이 fixture들은 `process()`의 유일한 추가 동작(길이 절단)이 적용될 만큼 크지 않으므로, 공개된 `mask()`만 호출하도록 하고 이유를 주석으로 남겼다.
+- Runbook 검색(`RunbookContextService`) 자체의 결과 품질은 이번 평가 범위가 아니다. 실제 검색 대신 각 fixture에 맞는 Runbook chunk를 직접 작성해 "검색이 이미 올바른 chunk를 찾아줬다"고 가정한 뒤 RAG 배선(context 주입 → 인용 → 재검증)의 효과만 분리해서 측정했다.
+- http-5xx에서 RAG 조건 점수가 비-RAG 기준선보다 낮게 나온 것을 그대로 보고했다(요청사항: "개선되지 않은 항목도 그대로 기록"). Runbook context가 "두 지점을 구분하라"는 절차를 알려주는 것과, 모델이 근거 없이 한쪽을 확신하는 경향을 억제하는 것은 별개의 문제라서 이번 컨텍스트 주입만으로는 해결되지 않았다.
+- 반복 실패 기준(`log-analysis-quality-evaluation.md` 5절: 동일 항목이 2개 이상 fixture에서 2회 모두 0점)을 이번 8회로는 충족하지 않아 prompt나 재검증 로직은 바꾸지 않았다.
 
 ## Frontend 영향
 
-해당 없음(이 PR 자체가 Frontend).
+해당 없음(Backend 테스트/문서 전용 작업).
 
 ## 관련 이슈
 
