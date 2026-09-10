@@ -8,6 +8,7 @@ import com.monit.pingbell.monitor.domain.MonitorStatus;
 import com.monit.pingbell.notification.domain.NotificationChannel;
 import com.monit.pingbell.notification.domain.NotificationHistory;
 import com.monit.pingbell.notification.type.NotificationChannelType;
+import com.monit.pingbell.notification.type.NotificationStatus;
 import com.monit.pingbell.notification.type.NotificationType;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.Test;
@@ -129,6 +130,30 @@ class NotificationHistoryRepositoryTest {
         assertThat(histories.getContent())
                 .extracting(NotificationHistory::getId)
                 .containsExactly(sendFailure.getId());
+    }
+
+    @Test
+    void countByStatusCountsRetryPendingHistoriesAcrossAllMembersForTheObservabilityGauge() {
+        Member member = persistMember("user@example.com");
+        Incident incident = persistIncident(member);
+        NotificationChannel channel = persistChannel(member);
+        NotificationHistory retryPending = persistHistory(incident, channel);
+        retryPending.markRetryPending("connection refused", LocalDateTime.of(2026, 7, 2, 10, 0), LocalDateTime.of(2026, 7, 2, 10, 1));
+
+        NotificationHistory sent = persistHistory(incident, channel);
+        sent.markSent(LocalDateTime.of(2026, 7, 2, 10, 0));
+
+        Member otherMember = persistMember("other@example.com");
+        Incident otherIncident = persistIncident(otherMember);
+        NotificationChannel otherChannel = persistChannel(otherMember);
+        NotificationHistory otherMemberRetryPending = persistHistory(otherIncident, otherChannel);
+        otherMemberRetryPending.markRetryPending("timeout", LocalDateTime.of(2026, 7, 2, 10, 2), LocalDateTime.of(2026, 7, 2, 10, 3));
+
+        entityManager.flush();
+        entityManager.clear();
+
+        // 이 gauge는 운영 전체 상태를 보려는 목적이라 member로 스코프하지 않는다 - 두 member의 RETRY_PENDING이 합산되어야 한다.
+        assertThat(historyRepository.countByStatus(NotificationStatus.RETRY_PENDING)).isEqualTo(2L);
     }
 
     private Member persistMember(String email) {

@@ -1,6 +1,7 @@
 # Pingbell Implementation Priority
 
 작성일: 2026-06-29
+갱신: 2026-09-10 — 5.2절 "단일 앱 최소 관측성 지표 구현 범위 재검토"는 대부분 구현 완료(`docs/operations/observability-metrics.md` 15절 참고). 이 문서의 다른 항목은 재검토하지 않았으니 진행 전 실제 코드 상태를 다시 확인할 것.
 
 ## 1. 목적
 
@@ -72,7 +73,7 @@
 
 | 우선순위 | 작업 | 담당 | 이유 |
 | --- | --- | --- | --- |
-| 1 | 단일 앱 최소 관측성 지표 구현 범위 재검토 | Backend / Infra | Prometheus 도입 전 어떤 값을 DB / Actuator / log로 먼저 볼지 결정해야 한다. |
+| 1 | ~~단일 앱 최소 관측성 지표 구현 범위 재검토~~ — 2026-09-10 대부분 완료 | Backend / Infra | `PingbellMetrics`로 health check/incident/notification counter·gauge 6종 구현 완료. 남은 건 `retry_due_current`/`retry_exhausted_total` 정도(`docs/operations/observability-metrics.md` 17절). |
 | 2 | notification retry exhausted 조회 / 표시 개선 | Backend / Frontend | 운영자 또는 사용자가 개입해야 할 실패를 찾기 쉽게 한다. |
 | 3 | 장애 지속 시간 표시 개선 | Backend / Frontend | incident open부터 resolved까지의 시간을 사용자에게 설명하기 쉽다. |
 

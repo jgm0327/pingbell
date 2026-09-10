@@ -123,6 +123,10 @@ public interface NotificationHistoryRepository extends JpaRepository<Notificatio
     @EntityGraph(attributePaths = {"incident", "incident.monitor", "channel"})
     Optional<NotificationHistory> findByIdAndChannelMemberId(Long id, Long memberId);
 
+    // 전역(전체 tenant) 카운트 - 운영 관측성 gauge(pingbell.notification.retry.pending.current)에서만 사용한다.
+    // memberId로 스코프하지 않으므로 사용자용 API 응답에는 절대 쓰지 않는다.
+    long countByStatus(NotificationStatus status);
+
     long countByChannelMemberIdAndStatusAndCreatedAtGreaterThanEqual(
             Long memberId,
             NotificationStatus status,

@@ -1,11 +1,16 @@
 package com.monit.pingbell.global.observability;
 
 import com.monit.pingbell.check.domain.CheckStatus;
+import com.monit.pingbell.incident.domain.IncidentStatus;
+import com.monit.pingbell.incident.repository.IncidentRepository;
+import com.monit.pingbell.notification.repository.NotificationHistoryRepository;
 import com.monit.pingbell.notification.type.NotificationChannelType;
 import com.monit.pingbell.notification.type.NotificationStatus;
 import com.monit.pingbell.notification.type.NotificationType;
+import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -16,6 +21,23 @@ import java.util.concurrent.TimeUnit;
 public class PingbellMetrics {
 
     private final MeterRegistry meterRegistry;
+    private final IncidentRepository incidentRepository;
+    private final NotificationHistoryRepository notificationHistoryRepository;
+
+    // counter/timer와 달리 gauge는 "지금 이 순간의 상태"라서 이벤트 시점에 기록하지 않고,
+    // 조회될 때마다 DB를 다시 세도록 등록만 해둔다(docs/operations/observability-metrics.md 12절).
+    @PostConstruct
+    void registerStateGauges() {
+        Gauge.builder("pingbell.incident.open.current", incidentRepository,
+                        repository -> repository.countByStatus(IncidentStatus.OPEN))
+                .description("현재 open 상태인 incident 수(전체 tenant 합계)")
+                .register(meterRegistry);
+
+        Gauge.builder("pingbell.notification.retry.pending.current", notificationHistoryRepository,
+                        repository -> repository.countByStatus(NotificationStatus.RETRY_PENDING))
+                .description("현재 재시도 대기(RETRY_PENDING) 상태인 알림 이력 수(전체 tenant 합계)")
+                .register(meterRegistry);
+    }
 
     public void recordHealthCheck(CheckStatus status, Integer httpStatus, long responseTimeMs) {
         String httpStatusFamily = httpStatusFamily(httpStatus);
