@@ -12,10 +12,11 @@ import { notificationChannelTypeLabel } from '../features/notification-channel/n
 import { useNotificationHistories, useResendNotificationHistory } from '../features/notification-history/queries'
 import {
   notificationEventTypeLabel,
+  notificationFailureTypeMeta,
   notificationStatusMeta,
 } from '../features/notification-history/notificationHistoryMeta'
 import type { NotificationChannelCreateInput } from '../features/notification-channel/types'
-import type { NotificationStatus } from '../features/notification-history/types'
+import type { NotificationFailureType, NotificationStatus } from '../features/notification-history/types'
 
 const HISTORY_PAGE_SIZE = 10
 
@@ -25,6 +26,15 @@ const STATUS_FILTERS: { value: NotificationStatus | undefined; label: string }[]
   { value: 'RETRY_PENDING', label: '재시도 대기' },
   { value: 'SENT', label: '발송 완료' },
   { value: 'FAILED', label: '실패' },
+]
+
+// Backend only accepts failureType together with status=FAILED (see
+// NotificationHistoryQueryService.validateFailureType) - this sub-filter only ever renders then.
+const FAILURE_TYPE_FILTERS: { value: NotificationFailureType | undefined; label: string }[] = [
+  { value: undefined, label: '전체' },
+  { value: 'CHANNEL_DISABLED', label: '채널 비활성' },
+  { value: 'SEND_FAILED', label: '발송 실패' },
+  { value: 'RETRY_EXHAUSTED', label: '재시도 초과' },
 ]
 
 const CHANNEL_FILTERS: { value: boolean | undefined; label: string }[] = [
@@ -41,7 +51,8 @@ export function NotificationChannelPage() {
 
   const [historyPage, setHistoryPage] = useState(0)
   const [historyStatus, setHistoryStatus] = useState<NotificationStatus | undefined>(undefined)
-  const historiesQuery = useNotificationHistories(historyPage, HISTORY_PAGE_SIZE, historyStatus)
+  const [historyFailureType, setHistoryFailureType] = useState<NotificationFailureType | undefined>(undefined)
+  const historiesQuery = useNotificationHistories(historyPage, HISTORY_PAGE_SIZE, historyStatus, historyFailureType)
   const resendHistory = useResendNotificationHistory()
   const [historyActionError, setHistoryActionError] = useState<string | null>(null)
 
@@ -116,13 +127,15 @@ export function NotificationChannelPage() {
 
       <h2 className="mb-3 mt-8 text-sm font-semibold text-slate-800">알림 발송 이력</h2>
 
-      <div className="mb-4 flex gap-2">
+      <div className="mb-2 flex gap-2">
         {STATUS_FILTERS.map((filter) => (
           <button
             key={filter.label}
             type="button"
             onClick={() => {
               setHistoryStatus(filter.value)
+              // failureType is only valid alongside status=FAILED (backend rejects it otherwise).
+              setHistoryFailureType(undefined)
               setHistoryPage(0)
             }}
             className={`rounded-md px-3 py-1.5 text-sm font-medium ${
@@ -135,6 +148,29 @@ export function NotificationChannelPage() {
           </button>
         ))}
       </div>
+
+      {historyStatus === 'FAILED' && (
+        <div className="mb-4 flex gap-2 pl-2">
+          <span className="self-center text-xs text-slate-400">실패 유형</span>
+          {FAILURE_TYPE_FILTERS.map((filter) => (
+            <button
+              key={filter.label}
+              type="button"
+              onClick={() => {
+                setHistoryFailureType(filter.value)
+                setHistoryPage(0)
+              }}
+              className={`rounded-md px-2.5 py-1 text-xs font-medium ${
+                historyFailureType === filter.value
+                  ? 'bg-sky-100 text-sky-700'
+                  : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'
+              }`}
+            >
+              {filter.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {historyActionError && (
         <p role="alert" className="mb-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
@@ -190,7 +226,17 @@ export function NotificationChannelPage() {
                       <td className="px-4 py-2">
                         <StatusBadge label={meta.label} tone={meta.tone} />
                       </td>
-                      <td className="max-w-xs truncate px-4 py-2 text-slate-500">{history.errorMessage ?? '-'}</td>
+                      <td className="max-w-xs px-4 py-2 text-slate-500">
+                        {history.failureType && (
+                          <div className="mb-1">
+                            <StatusBadge
+                              label={notificationFailureTypeMeta(history.failureType).label}
+                              tone={notificationFailureTypeMeta(history.failureType).tone}
+                            />
+                          </div>
+                        )}
+                        <div className="truncate">{history.errorMessage ?? '-'}</div>
+                      </td>
                       <td className="px-4 py-2 text-right">
                         {history.status === 'FAILED' && (
                           <button

@@ -1,33 +1,34 @@
 ## 작업 내용
 
-`docs/next_feature_request.md`의 "알림 채널 목록 활성/비활성 필터"를 구현했다. 백엔드 `GET /api/notification-channels`가 이미 `?enabled=true/false` 쿼리 파라미터를 지원하고 있어서(`NotificationChannelController.getChannels`), 백엔드 변경 없이 Frontend만으로 끝났다.
+`docs/next_feature_request.md`의 "알림 발송 실패 이력에 실패 유형(failureType) 필터 노출"을 구현했다. 백엔드 `GET /api/notification-histories`가 이미 `?failureType=` 쿼리 파라미터를 지원하고 있어서(`NotificationHistoryController.getHistories`, `NotificationHistoryQueryService`), 백엔드 변경 없이 Frontend만으로 끝났다.
 
 ## 변경 사항
 
-- **`features/notification-channel/api.ts`**: `getChannels(enabled?: boolean)` — `enabled`를 axios `params`로 전달(값이 `undefined`면 axios가 자동으로 생략해 기존 "전체 조회" 동작과 동일).
-- **`features/notification-channel/queries.ts`**: `useNotificationChannels(enabled?: boolean)` — query key에 `enabled`를 포함해 필터별로 캐시가 분리되게 했다. 기존 mutation들의 `invalidateQueries({ queryKey: ['notification-channels'] })`는 그대로 둬도 TanStack Query의 prefix 매칭으로 모든 필터 캐시가 함께 무효화된다.
-- **`pages/NotificationChannelPage.tsx`**: `전체`/`활성`/`비활성` 필터 버튼 추가 — 알림 발송 이력의 기존 상태 필터(`STATUS_FILTERS`)와 동일한 버튼 그룹 스타일을 재사용했다. 필터링 결과가 비었을 때는 "등록된 채널이 없습니다"가 아니라 "활성/비활성 채널이 없습니다"로 문구를 구분했다.
+- **`features/notification-history/notificationHistoryMeta.ts`**: `notificationFailureTypeMeta` 추가 — `CHANNEL_DISABLED`/`SEND_FAILED`/`RETRY_EXHAUSTED`를 각각 `채널 비활성`(neutral)/`발송 실패`(warning)/`재시도 초과`(danger) 라벨+톤으로 매핑. `RETRY_EXHAUSTED`만 `danger`로 둔 건 더 이상 자동 재시도되지 않는 상태라서다.
+- **`pages/NotificationChannelPage.tsx`**:
+  - 상태 필터가 `실패`일 때만 `실패 유형`(전체/채널 비활성/발송 실패/재시도 초과) 하위 필터를 노출한다. 백엔드가 `failureType`을 `status=FAILED`와 함께일 때만 허용하므로(`NotificationHistoryQueryService.validateFailureType`), 상태 필터를 다른 값으로 바꾸면 `failureType`도 같이 초기화한다.
+  - 각 이력 행의 에러 열에 `history.failureType`이 있으면 배지를 항상 표시한다 — 하위 필터를 안 켜도 재시도 초과/채널 비활성 이력이 한눈에 구분된다.
 
 ## API 계약
 
-- 신규/변경 없음. 기존 `GET /api/notification-channels?enabled={bool}`을 프론트에서 처음 사용하기 시작했을 뿐이다.
+- 신규/변경 없음. 기존 `GET /api/notification-histories?status=FAILED&failureType={type}`을 프론트에서 처음 사용하기 시작했을 뿐이다.
 
 ## 테스트 결과
 
 - [x] `npx tsc -b`, `npm run build` — 통과
-- [x] **실제 브라우저로 end-to-end 확인**: 기존 테스트 계정(Slack + 이메일 채널 보유)에서 Slack 채널을 비활성화 → `비활성` 필터에 Slack만 나타남, `활성` 필터에 이메일만 나타남, `전체` 필터에 둘 다 나타남을 스크린샷으로 직접 확인. 확인 후 Slack 채널을 재활성화해 계정을 원래 상태로 되돌렸다(원래 target 값은 마스킹되어 복구 불가능해 더미 웹훅 값으로 재활성화 — 이 채널은 애초에 `404 Not Found: no_team`으로 항상 실패하던 테스트용 값이라 실제 알림 동작에는 영향 없음).
+- [x] **실제 브라우저로 end-to-end 확인**: 테스트 계정에서 `실패` 상태 필터 선택 → `실패 유형` 하위 필터 노출 확인 → `발송 실패` 선택 시 해당 이력만(배지 일치) 표시 → `재시도 초과` 선택 시 빈 상태(`해당하는 발송 이력이 없습니다.`)가 에러 없이 표시됨 → 상태 필터를 `전체`로 되돌리면 하위 필터가 사라지고 400 에러 없이 정상 조회됨을 확인. 콘솔 에러 없음.
 
 ## 수동 테스트 방법
 
 ```bash
 cd frontend && npm run dev
 ```
-알림 채널 페이지에서 채널 하나를 비활성화한 뒤 `전체`/`활성`/`비활성` 필터를 각각 눌러 목록이 바뀌는지 확인.
+알림 채널 페이지 하단 발송 이력에서 `실패` 상태 필터를 누른 뒤 `실패 유형` 하위 필터(전체/채널 비활성/발송 실패/재시도 초과)를 각각 눌러 목록이 바뀌는지, 다른 상태 필터로 돌아갔을 때 에러 없이 하위 필터가 사라지는지 확인.
 
 ## 고민한 점
 
-- 필터를 프론트 상태로만 두지 않고 실제로 백엔드 쿼리 파라미터(`enabled`)를 사용하도록 했다 — 이미 서버가 지원하는 기능이라 클라이언트 사이드 필터링보다 서버 쿼리를 쓰는 게 더 단순하고, 채널 수가 늘어나도 그대로 확장된다.
-- 필터가 비었을 때의 EmptyState 문구를 "전체" 상태와 구분했다 — "등록된 채널이 없습니다"는 필터링 때문에 안 보이는 것과 진짜 채널이 하나도 없는 것을 헷갈리게 할 수 있어서다.
+- `failureType`은 백엔드가 `status=FAILED`와 함께일 때만 허용해서(그 외 조합은 400), 하위 필터를 상태 필터에 종속시켜 렌더링하고, 상태가 바뀌면 자동으로 초기화하도록 했다 — 그렇지 않으면 사용자가 "재시도 초과"를 선택한 채로 다른 상태 필터를 누르는 순간 400 에러가 날 수 있었다.
+- 하위 필터로 좁히지 않아도 실패 유형을 볼 수 있게, 이력 행 자체에도 배지를 항상 표시했다 — 완료 조건의 "재시도 초과와 채널 비활성이 시각적으로 구분된다"를 필터를 켜지 않은 기본 상태에서도 만족시키기 위해서다.
 
 ## Frontend 영향
 

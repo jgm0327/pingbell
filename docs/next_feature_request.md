@@ -1,57 +1,57 @@
 ---
 name: Feature Request
 about: 다음 개발 작업 요청 기록
-title: "[Frontend] 알림 발송 실패 이력에 실패 유형(failureType) 필터 노출"
-labels: frontend
+title: "[Backend] 재시도 대기/초과 관측성 gauge·counter 추가 (retry_due_current, retry_exhausted_total)"
+labels: backend
 assignees: ''
 ---
 
 ## 작업 목적
 
-알림 채널 목록 활성/비활성 필터(이전 작업)를 끝내면서 알림 발송 이력 쪽을 확인해보니, 백엔드는 이미 실패를 세 종류로 구분해 조회할 수 있는 계약을 갖고 있는데(`NotificationHistoryRepository.findRetryExhaustedFailuresByChannelMemberId`, `findChannelDisabledFailuresByChannelMemberId`, `findSendFailedFailuresByChannelMemberId`, 그리고 프론트 `NotificationFailureType = 'CHANNEL_DISABLED' | 'SEND_FAILED' | 'RETRY_EXHAUSTED'`), 프론트 `NotificationChannelPage`는 `status`(대기중/재시도대기/발송완료/실패)만 필터링하고 `failureType`은 API 타입에만 존재할 뿐 화면에 전혀 안 쓰인다.
+`docs/operations/observability-metrics.md` 8.1절 후보 중 `retry_pending_current`는 이미 구현됐고(`PingbellMetrics.registerStateGauges`), `retry_due_current`(gauge)와 `retry_exhausted_total`(counter)만 남아 있다. 알림 채널/발송 실패 이력 필터 작업(Frontend, 완료)과 짝을 이루는 Backend observability 마무리 작업이다.
 
-`docs/planning/implementation-priority.md` 5.2절의 "notification retry exhausted 조회/표시 개선"이 바로 이 gap을 가리키고 있다. 실패(`FAILED`) 이력 안에서 "재시도까지 다 소진하고 최종 실패한 것"과 "채널이 비활성이라 애초에 안 보낸 것"과 "그냥 한 번 실패한 것"을 운영자(=이 서비스에서는 사용자 본인)가 구분하지 못하면, 재시도 대상이 아닌 것까지 매번 눈으로 훑어야 한다.
+`NotificationHistoryRepository.findRetryDueHistories(now)`가 이미 "지금 재시도 대상인 이력" 목록을 반환하므로, 그 크기를 gauge로 노출하기만 하면 된다. `retry_exhausted_total`은 재시도를 다 소진하고 최종 실패로 전환되는 시점(`NotificationRetryService` 또는 관련 서비스가 `maxRetryCount`에 도달해 더 이상 재시도하지 않기로 판단하는 지점)에 counter를 1 증가시키면 된다.
 
 ## 작업 내용
 
-- [ ] 알림 발송 이력 필터에 `failureType` 옵션을 추가한다(`전체`/`채널 비활성`/`발송 실패`/`재시도 초과`), 기존 `status` 필터와 별개로 또는 `FAILED` 선택 시에만 하위 필터로 노출한다(UX는 구현 시 판단).
-- [ ] 재시도 초과(`RETRY_EXHAUSTED`) 이력은 "더 이상 자동 재시도되지 않는다"는 것을 배지나 문구로 명확히 표시한다.
-- [ ] `useNotificationHistories`는 이미 `failureType` 파라미터를 받고 있으니, 화면에서 그 값을 실제로 넘기기만 하면 된다(백엔드/훅 변경 불필요, 우선 코드로 재확인할 것).
+- [ ] `NotificationHistoryRepository`에 재시도 대상 건수를 세는 메서드 추가(`findRetryDueHistories`를 그대로 재사용하거나, count 전용 쿼리를 새로 추가 — 목록 전체를 안 가져와도 되면 count 쿼리가 더 가볍다).
+- [ ] `PingbellMetrics.registerStateGauges()`에 `pingbell.notification.retry.due.current` gauge 추가(다른 gauge와 동일한 패턴: 조회 시점마다 repository를 다시 센다).
+- [ ] 재시도가 `maxRetryCount`에 도달해 더 이상 재시도하지 않기로 확정되는 지점을 찾아 `pingbell.notification.retry.exhausted.total` counter를 1 증가시킨다(어디가 그 지점인지 `NotificationRetryService`/`NotificationHistory` 상태 전이를 먼저 코드로 확인할 것).
 
 ## 완료 조건
 
-- [ ] 세 가지 `failureType`로 각각 필터링했을 때 해당하는 이력만 보인다.
-- [ ] `재시도 초과` 이력과 `채널 비활성` 이력이 시각적으로 구분된다.
-- [ ] 기존 `status` 필터, 재전송 버튼 동작은 그대로 유지된다.
-- [ ] 프론트 빌드가 통과한다.
+- [ ] `/actuator/metrics/pingbell.notification.retry.due.current`, `/actuator/metrics/pingbell.notification.retry.exhausted.total`로 조회 가능.
+- [ ] gauge는 이벤트 시점이 아니라 조회 시점마다 재계산된다(기존 gauge 2종과 동일한 검증 패턴 — `PingbellMetricsTest` 참고).
+- [ ] counter는 재시도 소진으로 최종 실패 처리되는 경우에만 증가하고, 일반 실패(`SEND_FAILED`)나 채널 비활성(`CHANNEL_DISABLED`)에서는 증가하지 않는다.
+- [ ] `docs/operations/observability-metrics.md` 8.1·12·17절을 실제 구현 상태로 갱신한다.
 
 ## 제외 범위
 
-- 백엔드 API/쿼리 변경 (이미 존재함 — 진행 전 실제로 다시 확인할 것, 이 프로젝트에서 "이미 되어 있는데 문서만 안 됐다고 되어 있는" 경우가 두 번 있었다)
+- Prometheus / Grafana / alert rule
+- DLQ 지표(8.2절), Worker 분리 이후 지표(9절) — 아직 해당 기능 자체가 없음
 - 재시도 정책/횟수 변경
-- Kafka / Worker / DLQ / Prometheus
 
 ## 테스트 기준
 
-- 세 가지 필터 각각에서 올바른 이력만 보이는지 확인.
-- 재전송 버튼이 `FAILED` 상태에서 기존과 동일하게 동작하는지 확인.
+- `PingbellMetricsTest`에 두 지표 케이스 추가(기존 gauge 테스트와 동일한 방식 — mock repository 값이 바뀌면 다음 조회에 반영되는지).
+- counter가 재시도 소진 시점에만 증가하는지 관련 서비스 테스트에서 확인(mock `PingbellMetrics`로 호출 여부/횟수 검증).
 
 ## 담당 에이전트
 
-- 주 담당: Frontend Agent
+- 주 담당: Backend Agent
 
 ## 다음 작업
 
-- 이후에는 `docs/planning/implementation-priority.md` 5.1절의 나머지 항목(monitor 수정/일시정지/삭제 UX 정리, slow response 표시 정책 점검)이나, `docs/operations/observability-metrics.md` 17절의 `retry_due_current`/`retry_exhausted_total` gauge를 검토한다.
+- 이후에는 `docs/planning/implementation-priority.md` 5.1절의 "monitor 수정/일시정지/삭제 UX 정리"(이미 대부분 구현되어 있어 보이므로, 화면을 직접 열어 정말 남은 게 있는지부터 확인)나 "slow response 표시 정책 점검"(순수 코드 작업이 아니라 PM 판단이 먼저 필요)을 검토한다.
 
 ## 다음 에이전트에게 전달할 프롬프트
 
 ```text
-AGENTS.md와 docs/agents/frontend-agent.md를 읽고 docs/next_feature_request.md(알림 발송 실패 이력 failureType 필터)를 진행해줘.
+AGENTS.md와 docs/agents/backend-agent.md를 읽고 docs/next_feature_request.md(재시도 대기/초과 관측성 gauge·counter 추가)를 진행해줘.
 
 조건:
-- 시작 전에 NotificationHistoryPage/queries.ts/api.ts를 직접 읽고, 이 기능이 이미 구현되어 있지 않은지 먼저 확인해줘(이 프로젝트에서 계획 문서가 실제 코드보다 낡아있던 적이 이미 두 번 있었다).
-- 백엔드 API는 이미 failureType을 지원하니 새로 만들지 않는다.
-- 재시도 초과와 채널 비활성 실패를 시각적으로 구분한다.
-- 완료 후 테스트 방법을 정리한다.
+- Prometheus/Grafana는 구성하지 않는다.
+- gauge는 이벤트 기록이 아니라 조회 시점마다 재계산되도록 한다(기존 pingbell.incident.open.current, pingbell.notification.retry.pending.current와 동일한 패턴).
+- retry_exhausted_total이 정확히 어느 시점에 증가해야 하는지 NotificationRetryService 코드를 먼저 읽고 확인한다.
+- 완료 후 docs/operations/observability-metrics.md를 실제 구현 상태로 갱신하고, 테스트 방법을 정리한다.
 ```
