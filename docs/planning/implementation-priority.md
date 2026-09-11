@@ -62,10 +62,10 @@
 
 | 우선순위 | 작업 | 담당 | 이유 |
 | --- | --- | --- | --- |
-| 1 | 알림 채널 목록에서 enabled / disabled 상태 필터 제공 | Frontend | disabled 채널이 많아질 때 사용자가 현재 발송 대상 채널을 구분하기 쉽다. |
-| 2 | 알림 이력 상태 표시 UX 개선 | Frontend | `RETRY_PENDING`, `FAILED`, 수동 재전송 가능 상태를 더 명확히 보여줄 수 있다. |
-| 3 | monitor 수정 / 일시정지 / 삭제 UX 정리 | Frontend | monitor 운영 흐름에서 실수 가능성을 줄인다. |
-| 4 | slow response 표시 정책 점검 | Backend / Frontend | `SLOW_RESPONSE`가 저장되지만 화면에서 사용자가 의미를 이해하기 어려울 수 있다. |
+| 1 | ~~알림 채널 목록에서 enabled / disabled 상태 필터 제공~~ — 2026-09-10 완료 | Frontend | `NotificationChannelPage`에 전체/활성/비활성 필터 구현·브라우저 검증 완료. |
+| 2 | 알림 이력 상태 표시 UX 개선 — 2026-09-11 재확인, 대부분 이미 구현됨 | Frontend | `STATUS_FILTERS` 버튼, `notificationStatusMeta`(라벨+톤), `FAILED`일 때 재전송 버튼까지 이미 있음. 남은 진짜 gap은 `failureType`(채널비활성/발송실패/재시도초과) 미노출뿐 — `docs/next_feature_request.md`로 분리해 진행 중. |
+| 3 | monitor 수정 / 일시정지 / 삭제 UX 정리 — 2026-09-11 재확인, 대부분 이미 구현됨 | Frontend | `MonitorDetailPage`/`MonitorListPage`에 일시정지↔재활성화 토글, 삭제 `ConfirmModal`, 에러 메시지까지 이미 있음. 추가로 다듬을 부분이 있는지는 화면으로 직접 확인 필요. |
+| 4 | slow response 표시 정책 점검 — 2026-09-11 재확인, UI 표시는 이미 구현됨 | Backend / Frontend | `checkStatusMeta`에 `SLOW_RESPONSE`→"응답 지연"(warning) 라벨 이미 있음. 남은 건 "이게 Incident 판정에 영향을 줘야 하는가"라는 정책 질문(PM 판단 필요) — 순수 Frontend 작업은 아님. |
 
 ### 5.2 운영성 개선
 
