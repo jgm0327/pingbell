@@ -14,6 +14,7 @@ import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
+import java.time.LocalDateTime;
 import java.util.concurrent.TimeUnit;
 
 @Component
@@ -36,6 +37,14 @@ public class PingbellMetrics {
         Gauge.builder("pingbell.notification.retry.pending.current", notificationHistoryRepository,
                         repository -> repository.countByStatus(NotificationStatus.RETRY_PENDING))
                 .description("현재 재시도 대기(RETRY_PENDING) 상태인 알림 이력 수(전체 tenant 합계)")
+                .register(meterRegistry);
+
+        // RETRY_PENDING(위 gauge)과는 다른 값이다 - 이건 FAILED 상태이면서 nextRetryAt이 이미
+        // 지나 다음 스케줄러 실행 때 재시도될 이력 수(NotificationHistoryRepository.findRetryDueHistories
+        // 와 동일한 조건). now는 조회 시점마다 새로 계산해야 하므로 람다 안에서 호출한다.
+        Gauge.builder("pingbell.notification.retry.due.current", notificationHistoryRepository,
+                        repository -> repository.countRetryDueHistories(LocalDateTime.now()))
+                .description("현재 재시도 대상(nextRetryAt 도래) 알림 이력 수(전체 tenant 합계)")
                 .register(meterRegistry);
     }
 
@@ -88,6 +97,17 @@ public class PingbellMetrics {
                 "channel_type", channelType.name(),
                 "notification_type", notificationType.name(),
                 "result_status", resultStatus.name()
+        ).increment();
+    }
+
+    // 재시도를 다 소진하고(retryCount >= maxRetryCount) 최종 실패로 확정되는 시점에만 호출한다.
+    // NotificationHistory.resolveFailureType()이 RETRY_EXHAUSTED로 판정한 경우와 항상 일치해야
+    // 하므로, 호출부에서 직접 조건을 재구현하지 말고 그 결과를 그대로 사용한다.
+    public void recordNotificationRetryExhausted(NotificationChannelType channelType, NotificationType notificationType) {
+        meterRegistry.counter(
+                "pingbell.notification.retry.exhausted.total",
+                "channel_type", channelType.name(),
+                "notification_type", notificationType.name()
         ).increment();
     }
 

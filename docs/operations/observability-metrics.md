@@ -181,7 +181,11 @@ incident 지표로 확인할 질문:
 | `pingbell_retry_due_current` | gauge | 현재 재시도 대상 이력 수 |
 | `pingbell_retry_exhausted_total` | counter | 재시도 초과로 최종 실패한 수 |
 
-**구현 상태(2026-09-10)**: `pingbell.notification.retry.pending.current`(gauge)가 구현됐다 — `NotificationHistoryRepository.countByStatus(RETRY_PENDING)`을 조회 시점마다 다시 세는 방식으로, `pingbell_retry_pending_current` 후보와 같은 목적이다(전체 tenant 합계, memberId로 스코프하지 않음). `retry_due_current`와 `retry_exhausted_total`은 아직 미구현 — `NotificationHistoryRepository.findRetryDueHistories()`가 이미 있으니 다음 단계에서 그 결과 크기를 gauge로 노출하면 된다.
+**구현 상태(2026-09-11)**: 3개 후보 전부 구현 완료.
+
+- `pingbell.notification.retry.pending.current`(gauge, 2026-09-10) — `NotificationHistoryRepository.countByStatus(RETRY_PENDING)`을 조회 시점마다 다시 센다.
+- `pingbell.notification.retry.due.current`(gauge, 2026-09-11) — `NotificationHistoryRepository.countRetryDueHistories(now)`(`findRetryDueHistories`와 동일 조건: `retryable=true`, `nextRetryAt <= now`, `retryCount < maxRetryCount`인 count 전용 쿼리)를 조회 시점마다 다시 센다. `retry_pending_current`와는 다른 값이다 - RETRY_PENDING 상태뿐 아니라 `markRetryScheduledFailure`로 FAILED 상태이면서 재시도가 예약된 이력도 포함한다.
+- `pingbell.notification.retry.exhausted.total`(counter, 2026-09-11) — `NotificationHistory.resolveFailureType()`이 `RETRY_EXHAUSTED`로 판정하는 시점(`NotificationRetryService`, `NotificationService`, `NotificationHistoryResendService`의 최종 실패 처리 직후)에만 증가한다. 이 판정 로직은 `NotificationHistoryResponse`가 사용자에게 보여주는 `failureType`과 동일한 단일 구현(`NotificationHistory.resolveFailureType()`)을 공유해서, 지표와 화면 표시가 어긋나지 않는다.
 
 ### 8.2 미래 DLQ
 
@@ -298,9 +302,9 @@ MVP 이후 가장 먼저 볼 최소 지표:
 4. incident opened / resolved count — 구현됨(`pingbell.incident.total`)
 5. notification sent / failed count by channel type — 구현됨(`pingbell.notification.delivery.total`)
 6. retry pending count — 구현됨(`pingbell.notification.retry.pending.current`, gauge)
-7. retry exhausted count — 미구현
+7. retry exhausted count — 구현됨(`pingbell.notification.retry.exhausted.total`, counter)
 
-이 지표들은 현재 DB와 service 흐름만으로도 의미가 있다. Prometheus를 붙이기 전에는 관리자용 쿼리, 로그, 간단한 actuator 지표 확장 후보로만 둔다. 7개 중 6개가 `PingbellMetrics`로 구현됐고(2026-09-10), `/actuator/metrics/{지표명}`으로 바로 조회할 수 있다.
+이 지표들은 현재 DB와 service 흐름만으로도 의미가 있다. Prometheus를 붙이기 전에는 관리자용 쿼리, 로그, 간단한 actuator 지표 확장 후보로만 둔다. 7개 전부 `PingbellMetrics`로 구현됐고(2026-09-10~11), `/actuator/metrics/{지표명}`으로 바로 조회할 수 있다.
 
 ## 13. 미래 확장 순서
 
@@ -326,22 +330,22 @@ MVP 이후 가장 먼저 볼 최소 지표:
 - metric label에 URL, webhook, email address를 넣지 않는 보안 기준을 세웠다.
 - Worker 분리 전에도 어떤 지표를 봐야 하는지 먼저 정리해 이후 Prometheus/Grafana 도입 범위를 좁혔다.
 
-## 15. 구현 현황 (2026-09-10 갱신)
+## 15. 구현 현황 (2026-09-11 갱신)
 
-이 문서는 원래 설계 전용 문서로 시작했지만(2026-06-29), 이후 세션에서 `PingbellMetrics`(`com.monit.pingbell.global.observability`)로 4·6.1·7·8.1절의 counter/timer/gauge 후보 대부분이 실제 구현됐다.
+이 문서는 원래 설계 전용 문서로 시작했지만(2026-06-29), 이후 세션에서 `PingbellMetrics`(`com.monit.pingbell.global.observability`)로 4·6.1·7·8.1절의 counter/timer/gauge 후보가 전부 구현됐다.
 
 구현된 것:
 
 - Health Check: `pingbell.health.check.total`(counter), `pingbell.health.check.response.time`(timer) — `CheckService`
 - Incident: `pingbell.incident.total`(counter), `pingbell.incident.open.current`(gauge) — `IncidentDetectionService`
-- Notification: `pingbell.notification.delivery.total`(counter), `pingbell.notification.retry.attempt.total`(counter), `pingbell.notification.retry.pending.current`(gauge) — `NotificationService`, `NotificationRetryService`, `NotificationHistoryResendService`
+- Notification: `pingbell.notification.delivery.total`(counter), `pingbell.notification.retry.attempt.total`(counter), `pingbell.notification.retry.pending.current`(gauge), `pingbell.notification.retry.due.current`(gauge, 2026-09-11), `pingbell.notification.retry.exhausted.total`(counter, 2026-09-11) — `NotificationService`, `NotificationRetryService`, `NotificationHistoryResendService`
+- `NotificationHistory.resolveFailureType()` — 사용자에게 보여주는 `failureType`(`NotificationHistoryResponse`)과 `retry.exhausted.total` counter가 같은 판정 로직을 공유하도록 도메인으로 옮겼다(기존에는 DTO에만 있던 private 로직).
 - `application.yml`의 `management.endpoints.web.exposure.include: health,metrics`로 `/actuator/metrics/{지표명}` 조회 가능
-- 테스트: `PingbellMetricsTest`(gauge가 등록 시점 값을 캐시하지 않고 조회마다 재계산되는지), `IncidentRepositoryTest`/`NotificationHistoryRepositoryTest`(전역 count가 tenant 스코프 없이 전체 합계인지)
+- 테스트: `PingbellMetricsTest`(gauge가 등록 시점 값을 캐시하지 않고 조회마다 재계산되는지, counter가 태그별로 정확히 집계되는지), `IncidentRepositoryTest`/`NotificationHistoryRepositoryTest`(전역 count가 tenant 스코프 없이 전체 합계인지), `NotificationHistoryTest`(`resolveFailureType()`의 5가지 분류 - 미실패/재시도예약/채널비활성/재시도초과/일반실패 - 가 정확한지)
 
 여전히 구현하지 않은 것:
 
 - Prometheus / Grafana / dashboard / alert rule
-- `retry_due_current`, `retry_exhausted_total` gauge/counter (8.1절 나머지 후보)
 - Monitor State(5절), DLQ(8.2절), Worker 분리 이후(9절) 지표 — 아직 해당 기능 자체가 없음
 
 이유(여전히 유효):
@@ -350,18 +354,18 @@ MVP 이후 가장 먼저 볼 최소 지표:
 - Prometheus/Grafana 도입은 실제 운영 트래픽이나 필요가 생긴 뒤 판단한다(AGENTS.md).
 - 지금 구현된 counter/gauge만으로도 `/actuator/metrics`와 로그로 최소 관측이 가능하다.
 
-## 16. 이번 문서에서 하지 않은 일 (2026-09-10 시점)
+## 16. 이번 문서에서 하지 않은 일 (2026-09-11 시점)
 
 - Prometheus를 구성하지 않았다.
 - Grafana dashboard를 만들지 않았다.
 - alert rule을 작성하지 않았다.
 - log collector를 구성하지 않았다.
-- `retry_due_current`, `retry_exhausted_total`, Monitor State, DLQ, Worker 지표는 구현하지 않았다.
+- Monitor State, DLQ, Worker 지표는 구현하지 않았다(해당 기능 자체가 아직 없음).
 - DB schema를 변경하지 않았다(gauge는 기존 테이블을 조회만 한다).
 
 ## 17. 다음 작업
 
-다음 이슈 후보:
+`docs/operations/observability-metrics.md` 8.1절의 후보는 전부 구현이 끝났다. 다음 이슈 후보:
 
-- `retry_due_current`(gauge), `retry_exhausted_total`(counter) 추가 — `NotificationHistoryRepository.findRetryDueHistories()`와 기존 retry-exhausted 조회 로직을 재사용할 수 있다.
 - README / 포트폴리오 문서에 이번 관측성 구현 반영(현재 구현된 기능과 설계 전용 범위를 명확히 구분).
+- Monitor State 지표(5절 - 상태별 monitor 수, check lag)는 아직 후보로만 남아 있다. 실제로 필요해지면(예: monitor 수가 늘어나 scheduler 지연을 눈으로 봐야 할 때) 진행한다.

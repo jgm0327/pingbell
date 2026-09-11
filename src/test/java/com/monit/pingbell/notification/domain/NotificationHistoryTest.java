@@ -6,6 +6,7 @@ import com.monit.pingbell.member.domain.Member;
 import com.monit.pingbell.monitor.domain.Monitor;
 import com.monit.pingbell.monitor.domain.MonitorStatus;
 import com.monit.pingbell.notification.type.NotificationChannelType;
+import com.monit.pingbell.notification.type.NotificationFailureType;
 import com.monit.pingbell.notification.type.NotificationStatus;
 import com.monit.pingbell.notification.type.NotificationType;
 import org.junit.jupiter.api.Test;
@@ -78,6 +79,62 @@ class NotificationHistoryTest {
         assertThat(history.getNextRetryAt()).isNull();
         assertThat(history.isRetryable()).isFalse();
         assertThat(history.getErrorMessage()).isNull();
+    }
+
+    @Test
+    void resolveFailureTypeReturnsNullWhenNotFailed() {
+        NotificationHistory history = createHistory();
+
+        assertThat(history.resolveFailureType()).isNull();
+    }
+
+    @Test
+    void resolveFailureTypeReturnsNullForAFailedStatusThatIsStillAwaitingScheduledRetry() {
+        NotificationHistory history = createHistory();
+        LocalDateTime now = LocalDateTime.of(2026, 6, 22, 10, 0);
+
+        // markRetryScheduledFailure sets status=FAILED but retryCount < maxRetryCount and a
+        // pending nextRetryAt - this is not a terminal failure yet, so it must not be classified.
+        history.markRetryScheduledFailure("timeout", now, now.plusMinutes(1));
+
+        assertThat(history.resolveFailureType()).isNull();
+    }
+
+    @Test
+    void resolveFailureTypeReturnsChannelDisabledEvenIfRetryCountHappensToBeExhausted() {
+        NotificationHistory history = createHistory();
+        LocalDateTime now = LocalDateTime.of(2026, 6, 22, 10, 0);
+        history.increaseRetryCount();
+        history.increaseRetryCount();
+
+        history.markFailed(NotificationHistory.CHANNEL_DISABLED_ERROR_MESSAGE, now);
+
+        // Channel-disabled takes priority over retry-exhausted even though retryCount(2) >=
+        // maxRetryCount(2) here - see NotificationHistory.resolveFailureType's ordering.
+        assertThat(history.resolveFailureType()).isEqualTo(NotificationFailureType.CHANNEL_DISABLED);
+    }
+
+    @Test
+    void resolveFailureTypeReturnsRetryExhaustedWhenRetryCountReachedMax() {
+        NotificationHistory history = createHistory();
+        LocalDateTime now = LocalDateTime.of(2026, 6, 22, 10, 0);
+        history.increaseRetryCount();
+        history.increaseRetryCount();
+
+        history.markFailed("still failing", now);
+
+        assertThat(history.resolveFailureType()).isEqualTo(NotificationFailureType.RETRY_EXHAUSTED);
+    }
+
+    @Test
+    void resolveFailureTypeReturnsSendFailedForANonRetryableFailureBeforeRetriesAreExhausted() {
+        NotificationHistory history = createHistory();
+        LocalDateTime now = LocalDateTime.of(2026, 6, 22, 10, 0);
+
+        history.markFailed("404 Not Found", now);
+
+        assertThat(history.getRetryCount()).isLessThan(history.getMaxRetryCount());
+        assertThat(history.resolveFailureType()).isEqualTo(NotificationFailureType.SEND_FAILED);
     }
 
     private NotificationHistory createHistory() {

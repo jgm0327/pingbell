@@ -163,4 +163,15 @@ public interface NotificationHistoryRepository extends JpaRepository<Notificatio
             order by history.nextRetryAt asc, history.id asc
             """)
     List<NotificationHistory> findRetryDueHistories(@Param("now") LocalDateTime now);
+
+    // 전역(전체 tenant) 카운트 - 운영 관측성 gauge(pingbell.notification.retry.due.current)에서만
+    // 사용한다. findRetryDueHistories와 같은 조건이지만 전체 row를 읽지 않고 개수만 센다.
+    @Query("""
+            select count(history)
+            from NotificationHistory history
+            where history.retryable = true
+              and history.nextRetryAt <= :now
+              and history.retryCount < history.maxRetryCount
+            """)
+    long countRetryDueHistories(@Param("now") LocalDateTime now);
 }

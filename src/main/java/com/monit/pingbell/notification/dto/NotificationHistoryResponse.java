@@ -56,32 +56,10 @@ public record NotificationHistoryResponse(
                 history.getSentAt(),
                 history.isManualResend(),
                 history.getResendOfHistoryId(),
-                resolveFailureType(history),
+                history.resolveFailureType(),
                 history.getCreatedAt(),
                 sanitizeErrorMessage(history.getErrorMessage())
         );
-    }
-
-    private static NotificationFailureType resolveFailureType(NotificationHistory history) {
-        if (!history.isFailed()) {
-            return null;
-        }
-        if (isRetryScheduledFailure(history)) {
-            return null;
-        }
-        if (history.isChannelDisabledFailure()) {
-            return NotificationFailureType.CHANNEL_DISABLED;
-        }
-        if (history.isRetryExhaustedFailure()) {
-            return NotificationFailureType.RETRY_EXHAUSTED;
-        }
-        return NotificationFailureType.SEND_FAILED;
-    }
-
-    private static boolean isRetryScheduledFailure(NotificationHistory history) {
-        return history.isRetryable()
-                && history.getNextRetryAt() != null
-                && history.getRetryCount() < history.getMaxRetryCount();
     }
 
     private static String sanitizeErrorMessage(String errorMessage) {

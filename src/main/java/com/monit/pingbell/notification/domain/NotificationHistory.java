@@ -2,6 +2,7 @@ package com.monit.pingbell.notification.domain;
 
 import com.monit.pingbell.global.common.BaseTimeEntity;
 import com.monit.pingbell.incident.domain.Incident;
+import com.monit.pingbell.notification.type.NotificationFailureType;
 import com.monit.pingbell.notification.type.NotificationStatus;
 import com.monit.pingbell.notification.type.NotificationType;
 import jakarta.persistence.*;
@@ -177,5 +178,31 @@ public class NotificationHistory extends BaseTimeEntity {
 
     public boolean isChannelDisabledFailure() {
         return isFailed() && CHANNEL_DISABLED_ERROR_MESSAGE.equals(this.errorMessage);
+    }
+
+    /**
+     * Single source of truth for the user-facing failure classification (also used by
+     * NotificationHistoryResponse) - moved here so PingbellMetrics can record
+     * pingbell.notification.retry.exhausted.total from the same classification instead of a
+     * second, potentially divergent, copy of this logic.
+     */
+    public NotificationFailureType resolveFailureType() {
+        if (!isFailed()) {
+            return null;
+        }
+        if (isRetryScheduledFailure()) {
+            return null;
+        }
+        if (isChannelDisabledFailure()) {
+            return NotificationFailureType.CHANNEL_DISABLED;
+        }
+        if (isRetryExhaustedFailure()) {
+            return NotificationFailureType.RETRY_EXHAUSTED;
+        }
+        return NotificationFailureType.SEND_FAILED;
+    }
+
+    private boolean isRetryScheduledFailure() {
+        return this.retryable && this.nextRetryAt != null && this.retryCount < this.maxRetryCount;
     }
 }

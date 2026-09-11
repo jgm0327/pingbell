@@ -9,6 +9,7 @@ import com.monit.pingbell.notification.repository.NotificationChannelRepository;
 import com.monit.pingbell.notification.repository.NotificationHistoryRepository;
 import com.monit.pingbell.notification.sender.NotificationSender;
 import com.monit.pingbell.notification.type.NotificationChannelType;
+import com.monit.pingbell.notification.type.NotificationFailureType;
 import com.monit.pingbell.notification.type.NotificationType;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -59,6 +60,9 @@ public class NotificationService {
             } catch (Exception e) {
                 handleInitialSendFailure(history, channel, type, now, e);
                 metrics.recordNotificationDelivery(channel.getType(), type, history.getStatus(), history.isManualResend());
+                if (history.resolveFailureType() == NotificationFailureType.RETRY_EXHAUSTED) {
+                    metrics.recordNotificationRetryExhausted(channel.getType(), type);
+                }
             }
         }
     }

@@ -7,6 +7,7 @@ import com.monit.pingbell.notification.dto.NotificationHistoryResponse;
 import com.monit.pingbell.notification.repository.NotificationHistoryRepository;
 import com.monit.pingbell.notification.sender.NotificationSender;
 import com.monit.pingbell.notification.type.NotificationChannelType;
+import com.monit.pingbell.notification.type.NotificationFailureType;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -70,6 +71,9 @@ public class NotificationHistoryResendService {
             }
             history.markFailed(failure.errorMessage(), now);
             metrics.recordNotificationDelivery(history.getChannel().getType(), history.getNotificationType(), history.getStatus(), history.isManualResend());
+            if (history.resolveFailureType() == NotificationFailureType.RETRY_EXHAUSTED) {
+                metrics.recordNotificationRetryExhausted(history.getChannel().getType(), history.getNotificationType());
+            }
         }
     }
 

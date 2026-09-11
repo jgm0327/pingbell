@@ -3,7 +3,9 @@ package com.monit.pingbell.global.observability;
 import com.monit.pingbell.incident.domain.IncidentStatus;
 import com.monit.pingbell.incident.repository.IncidentRepository;
 import com.monit.pingbell.notification.repository.NotificationHistoryRepository;
+import com.monit.pingbell.notification.type.NotificationChannelType;
 import com.monit.pingbell.notification.type.NotificationStatus;
+import com.monit.pingbell.notification.type.NotificationType;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -11,6 +13,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
 /**
@@ -49,5 +52,35 @@ class PingbellMetricsTest {
         metrics.registerStateGauges();
 
         assertThat(meterRegistry.get("pingbell.notification.retry.pending.current").gauge().value()).isEqualTo(5.0);
+    }
+
+    @Test
+    void exposesCurrentRetryDueNotificationCountAsAGaugeThatIsRecomputedOnEachRead() {
+        when(notificationHistoryRepository.countRetryDueHistories(any())).thenReturn(4L);
+
+        PingbellMetrics metrics = new PingbellMetrics(meterRegistry, incidentRepository, notificationHistoryRepository);
+        metrics.registerStateGauges();
+
+        assertThat(meterRegistry.get("pingbell.notification.retry.due.current").gauge().value()).isEqualTo(4.0);
+
+        when(notificationHistoryRepository.countRetryDueHistories(any())).thenReturn(0L);
+        assertThat(meterRegistry.get("pingbell.notification.retry.due.current").gauge().value()).isEqualTo(0.0);
+    }
+
+    @Test
+    void recordsNotificationRetryExhaustedAsATaggedCounter() {
+        PingbellMetrics metrics = new PingbellMetrics(meterRegistry, incidentRepository, notificationHistoryRepository);
+        metrics.registerStateGauges();
+
+        metrics.recordNotificationRetryExhausted(NotificationChannelType.SLACK, NotificationType.INCIDENT_OPEN);
+        metrics.recordNotificationRetryExhausted(NotificationChannelType.SLACK, NotificationType.INCIDENT_OPEN);
+
+        assertThat(
+                meterRegistry.get("pingbell.notification.retry.exhausted.total")
+                        .tag("channel_type", "SLACK")
+                        .tag("notification_type", "INCIDENT_OPEN")
+                        .counter()
+                        .count()
+        ).isEqualTo(2.0);
     }
 }

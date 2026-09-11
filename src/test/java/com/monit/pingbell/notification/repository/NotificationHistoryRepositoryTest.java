@@ -156,6 +156,33 @@ class NotificationHistoryRepositoryTest {
         assertThat(historyRepository.countByStatus(NotificationStatus.RETRY_PENDING)).isEqualTo(2L);
     }
 
+    @Test
+    void countRetryDueHistoriesCountsHistoriesWhoseNextRetryHasArrivedAcrossAllMembersForTheObservabilityGauge() {
+        LocalDateTime now = LocalDateTime.of(2026, 7, 2, 10, 5);
+
+        Member member = persistMember("user@example.com");
+        Incident incident = persistIncident(member);
+        NotificationChannel channel = persistChannel(member);
+        NotificationHistory due = persistHistory(incident, channel);
+        due.markRetryPending("connection refused", LocalDateTime.of(2026, 7, 2, 10, 0), LocalDateTime.of(2026, 7, 2, 10, 1));
+
+        NotificationHistory notYetDue = persistHistory(incident, channel);
+        notYetDue.markRetryPending("timeout", LocalDateTime.of(2026, 7, 2, 10, 0), LocalDateTime.of(2026, 7, 2, 10, 30));
+
+        Member otherMember = persistMember("other@example.com");
+        Incident otherIncident = persistIncident(otherMember);
+        NotificationChannel otherChannel = persistChannel(otherMember);
+        NotificationHistory otherMemberDue = persistHistory(otherIncident, otherChannel);
+        otherMemberDue.markRetryPending("timeout", LocalDateTime.of(2026, 7, 2, 10, 0), LocalDateTime.of(2026, 7, 2, 10, 2));
+
+        entityManager.flush();
+        entityManager.clear();
+
+        // 이 gauge도 전체 tenant 합계다 - due 조건(retryable && nextRetryAt <= now && retryCount < maxRetryCount)을
+        // 만족하는 두 member의 이력이 합산되어야 하고, 아직 안 된(notYetDue) 건은 제외된다.
+        assertThat(historyRepository.countRetryDueHistories(now)).isEqualTo(2L);
+    }
+
     private Member persistMember(String email) {
         Member member = Member.builder()
                 .email(email)
