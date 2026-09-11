@@ -72,7 +72,7 @@ Runbook 규격과 합성 샘플만 준비됐다. 문서 저장소, API, `pgvecto
 - 테스트: 허위 reference, prompt injection, 권한 회수, retired 전환, 빈 검색과 검색 timeout 테스트.
 - 의존성: Issue 4.
 
-### Issue 6. 합성 fixture 기반 RAG 전후 품질 평가
+### Issue 6. 합성 fixture 기반 RAG 전후 품질 평가 — ✅ 완료 (2026-09-10)
 
 - 우선순위: 6
 - 주 담당: AI Agent
@@ -83,6 +83,7 @@ Runbook 규격과 합성 샘플만 준비됐다. 문서 저장소, API, `pgvecto
 - 완료 조건: 잘못된 reference와 교차 Tenant 노출이 0건이고, 안전성 hard failure가 없으며, 개선되지 않은 항목도 그대로 기록한다.
 - 테스트: 기본 CI는 Fake client와 합성 fixture만 사용하고 실제 모델 평가는 API Key 없는 CI와 분리한다.
 - 의존성: Issue 5.
+- 완료 조건 충족: `RagReferenceIntegrationTest`(mock 기반, 기본 CI)가 `LogAnalysisService`는 모델이 인용한 chunk id를 그대로 노출하지 않고 `RunbookReferenceValidator`가 승인한 것만 반환함을 검증한다. `RagQualityEvaluationTest`(`LOG_ANALYSIS_AI_API_KEY` 있을 때만 실행)로 실제 모델을 8회(4 fixture × 2회) 호출한 결과 잘못된 reference·교차 Tenant 노출 0건, 안전성 hard failure 0건을 확인했다. 점수·실패 사유 코드와 비-RAG 기준선 대비 개선/미개선 항목(http-5xx는 오히려 소폭 하락)을 [`rag-quality-evaluation.md`](./rag-quality-evaluation.md)에 그대로 기록했다.
 
 ## 3. 담당 에이전트
 

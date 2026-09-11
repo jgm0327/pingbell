@@ -34,6 +34,10 @@ public interface IncidentRepository extends JpaRepository<Incident, Long> {
 
     long countByMonitorMemberIdAndStatus(Long memberId, IncidentStatus status);
 
+    // 전역(전체 tenant) 카운트 - 운영 관측성 gauge(pingbell.incident.open.current)에서만 사용한다.
+    // memberId로 스코프하지 않으므로 사용자용 API 응답에는 절대 쓰지 않는다.
+    long countByStatus(IncidentStatus status);
+
     long countByMonitorMemberIdAndStartedAtGreaterThanEqual(Long memberId, LocalDateTime since);
 
     long countByMonitorMemberIdAndResolvedAtGreaterThanEqual(Long memberId, LocalDateTime since);

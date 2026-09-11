@@ -17,7 +17,8 @@ public class WebConfig implements WebMvcConfigurer {
                 .addPathPatterns(
                         "/api/monitors/{monitorId}",
                         "/api/monitors/{monitorId}/**",
-                        "/api/incidents/{incidentId}"
+                        "/api/incidents/{incidentId}",
+                        "/api/incidents/{incidentId}/**"
                 );
     }
 }

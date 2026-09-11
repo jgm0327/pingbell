@@ -4,6 +4,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.monit.pingbell.global.security.jwt.JwtTokenProvider;
 import com.monit.pingbell.runbook.domain.*;
 import com.monit.pingbell.runbook.dto.RunbookCreateRequest;
+import com.monit.pingbell.runbook.embedding.RunbookChunk;
+import com.monit.pingbell.runbook.embedding.RunbookEmbeddingException;
+import com.monit.pingbell.runbook.embedding.RunbookEmbeddingService;
 import com.monit.pingbell.runbook.repository.*;
 import com.monit.pingbell.runbook.service.RunbookContentValidatorTest;
 import org.junit.jupiter.api.BeforeEach;
@@ -13,8 +16,11 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import java.util.List;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -27,6 +33,10 @@ class RunbookControllerTest {
     @Autowired JwtTokenProvider jwtTokenProvider;
     @Autowired RunbookRevisionRepository revisionRepository;
     @Autowired RunbookDocumentRepository documentRepository;
+
+    // The real bean is backed by pgvector-specific SQL that the H2-based test profile cannot run,
+    // so the reindex endpoint is verified against a mock instead of the full embedding pipeline.
+    @MockitoBean RunbookEmbeddingService runbookEmbeddingService;
 
     @BeforeEach
     void cleanUp() {
@@ -93,6 +103,50 @@ class RunbookControllerTest {
                         .contentType(MediaType.APPLICATION_JSON).content(invalid))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+    }
+
+    @Test
+    void reindexReturnsChunkCountForTheAuthenticatedTenant() throws Exception {
+        when(runbookEmbeddingService.reindex(7L, "owned", 1)).thenReturn(List.of(
+                chunk("owned", "chunk-1"), chunk("owned", "chunk-2")));
+
+        mockMvc.perform(post("/api/runbooks/{documentId}/versions/{version}/reindex", "owned", 1)
+                        .header("Authorization", bearer(7L)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.chunkCount").value(2));
+    }
+
+    @Test
+    void reindexMapsEmbeddingFailureToBadGateway() throws Exception {
+        when(runbookEmbeddingService.reindex(eq(7L), eq("owned"), eq(1)))
+                .thenThrow(new RunbookEmbeddingException("EMBEDDING_CLIENT_FAILED", "The embedding client failed."));
+
+        mockMvc.perform(post("/api/runbooks/{documentId}/versions/{version}/reindex", "owned", 1)
+                        .header("Authorization", bearer(7L)))
+                .andExpect(status().isBadGateway())
+                .andExpect(jsonPath("$.code").value("EMBEDDING_CLIENT_FAILED"));
+    }
+
+    @Test
+    void reindexMapsMissingActiveRevisionToNotFound() throws Exception {
+        when(runbookEmbeddingService.reindex(eq(7L), eq("missing"), eq(1)))
+                .thenThrow(new RunbookEmbeddingException(
+                        "RUNBOOK_ACTIVE_REVISION_NOT_FOUND", "The tenant-owned active Runbook revision was not found."));
+
+        mockMvc.perform(post("/api/runbooks/{documentId}/versions/{version}/reindex", "missing", 1)
+                        .header("Authorization", bearer(7L)))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("RUNBOOK_ACTIVE_REVISION_NOT_FOUND"));
+    }
+
+    @Test
+    void reindexRequiresAuthentication() throws Exception {
+        mockMvc.perform(post("/api/runbooks/{documentId}/versions/{version}/reindex", "owned", 1))
+                .andExpect(status().isForbidden());
+    }
+
+    private RunbookChunk chunk(String documentId, String chunkId) {
+        return new RunbookChunk(7L, documentId, 1, chunkId, 0, "확인", "content", "hash-" + chunkId);
     }
 
     private void createAs(Long memberId, String documentId) throws Exception {

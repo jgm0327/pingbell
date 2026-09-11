@@ -20,12 +20,12 @@ Pingbell은 개인 개발자용 서버 헬스체크 및 장애 알림 서비스�
 
 아래 문서는 Kafka 모드, 작업자 분리, DLQ, 관측성 도입 전후의 책임 경계와 운영 기준을 정리한 문서다. 현재 실행 환경에는 단일 Spring Boot 앱 안의 Kafka 모드와 최소 DLQ 토픽 경계가 있으며, 별도 작업자 애플리케이션과 Prometheus / Grafana는 아직 구현하지 않았다.
 
-- `docs/event-boundary.md`: 단일 앱 안의 현재 동기 흐름과 미래 이벤트 경계
-- `docs/check-worker-design.md`: 체크 작업자 분리 시 책임과 멱등성 기준
-- `docs/incident-detector-design.md`: 장애 감지기 분리 시 장애 판정과 상태 전이 기준
-- `docs/notification-worker-design.md`: 알림 작업자 분리 시 알림 이력과 발송 요청 기준
-- `docs/dlq-reprocessing-policy.md`: DLQ 수동 확인 절차와 재시도 가능 / 재시도 불가 / 재시도 소진, 재처리·폐기 기준
-- `docs/observability-metrics.md`: 현재 단일 앱과 미래 작업자 구조에서 볼 관측성 지표 후보
+- `docs/architecture/event-boundary.md`: 단일 앱 안의 현재 동기 흐름과 미래 이벤트 경계
+- `docs/architecture/check-worker-design.md`: 체크 작업자 분리 시 책임과 멱등성 기준
+- `docs/architecture/incident-detector-design.md`: 장애 감지기 분리 시 장애 판정과 상태 전이 기준
+- `docs/architecture/notification-worker-design.md`: 알림 작업자 분리 시 알림 이력과 발송 요청 기준
+- `docs/dlq/README.md`: DLQ 수동 확인 절차와 재시도 가능 / 재시도 불가 / 재시도 소진, 재처리·폐기 기준
+- `docs/operations/observability-metrics.md`: 현재 단일 앱과 미래 작업자 구조에서 볼 관측성 지표 후보
 
 ## 주요 기능
 
@@ -165,11 +165,10 @@ pingbell
 │  ├─ application.yml
 │  └─ db/migration
 ├─ frontend
-│  ├─ src/app
-│  ├─ src/features
-│  ├─ src/pages
-│  ├─ src/shared
-│  └─ src/widgets
+│  ├─ src/app        # providers, router
+│  ├─ src/features   # auth 등 기능별 api/타입/컴포넌트
+│  ├─ src/pages       # 라우트 페이지
+│  └─ src/shared      # httpClient, session, 공통 컴포넌트/레이아웃
 └─ docker-compose.yml
 ```
 
@@ -265,10 +264,23 @@ PINGBELL_KAFKA_TOPIC_NOTIFICATION_REQUESTED=pingbell.notification.requested
 
 Slack / Discord 알림은 애플리케이션 실행 후 알림 채널 화면에서 각 서비스의 웹훅 URL을 등록해 사용한다.
 
-### 2. 로컬 인프라 실행
+### 2. 인프라 + 앱 실행 (Docker Compose)
+
+`docker compose up -d`는 PostgreSQL / Redis / Kafka / Mailpit뿐 아니라 Spring Boot 앱
+(`pingbell-app`)도 함께 빌드해서 실행한다. 앱 컨테이너는 `postgres`, `redis`가
+healthy 상태가 된 뒤에 시작하며, `.env`의 값을 그대로 사용하되 DB/Redis/Mail 접속
+주소만 compose 네트워크 안의 서비스 이름(`postgres`, `redis`, `mailpit`, `kafka`)으로
+재정의한다. 소스만 수정하고 별도 재빌드 없이 반복 실행하고 싶다면 아래 3번 절의 로컬
+`gradlew bootRun`을 사용한다.
 
 ```bash
 docker compose up -d
+```
+
+소스를 수정한 뒤 앱 이미지를 다시 빌드하려면:
+
+```bash
+docker compose up -d --build app
 ```
 
 컨테이너 확인:
@@ -277,13 +289,51 @@ docker compose up -d
 docker ps --filter name=pingbell
 ```
 
+앱 로그 확인:
+
+```bash
+docker compose logs -f app
+```
+
 접속 정보:
 
+- Pingbell 앱: `http://localhost:8080` (`APP_PORT` 환경변수로 host 포트 변경 가능)
 - PostgreSQL: `localhost:5432`
 - Redis: `localhost:6379`
 - Mailpit SMTP: `localhost:1025`
 - Mailpit 웹 화면: `http://localhost:8025`
-- Kafka: `localhost:9092`
+- Kafka: `localhost:9092` (host에서 접속할 때 기준. 앱 컨테이너 등 compose 네트워크
+  내부에서는 `kafka:29092`를 사용한다 — `docker-compose.yml`의 Kafka
+  `INTERNAL`/`EXTERNAL` 리스너 설정 참고)
+
+> 이전에 다른 `POSTGRES_DB` 값으로 이미 `postgres-data` volume을 초기화한 적이 있다면,
+> Postgres는 첫 초기화 시점에만 DB를 자동 생성하므로 `.env`의 현재 `POSTGRES_DB`가
+> 존재하지 않을 수 있다. 이 경우 `docker exec -it pingbell-postgres psql -U <user> -d postgres -c "CREATE DATABASE <db> OWNER <user>;"`로
+> 직접 만들거나, 데이터를 보존할 필요가 없으면 `docker compose down -v`로 volume을
+> 초기화한 뒤 다시 `docker compose up -d`한다. 완전히 새로 clone한 환경에서는 이 문제가
+> 발생하지 않는다.
+
+### 모니터링 대상용 Mock 서버 (선택)
+
+실제로 체크할 서버가 없을 때 헬스체크/장애 판정 흐름을 테스트하기 위한 의존성 없는 mock
+서버가 `mock-server/`에 있다. `app`의 `depends_on`에는 포함되지 않아 이름을 직접 지정해야
+실행된다.
+
+```bash
+docker compose up -d mock-server
+```
+
+Monitor URL로 `http://mock-server:4000/health`(compose 네트워크 내부, 즉 `app`이
+compose로 실행 중일 때)를 등록한 뒤, `http://localhost:4100/_control`에서 정상 / 지연 /
+에러 / 불안정 / 무응답(timeout) 모드를 재시작 없이 바로 바꿀 수 있다. 자세한 사용법은
+`mock-server/README.md` 참고.
+
+### 로그 자동 수집 (Incident 발생 시 자동 분석)
+
+장애가 열리는 순간 사람이 로그를 다시 찾아 업로드하지 않아도 AI가 자동으로 분석하게 하려면,
+모니터링 대상 서버에서 Fluent Bit로 최근 로그를 Pingbell에 계속 보내야 한다. API Key 발급
+시점에 Monitor ID/URL/Key가 이미 채워진 설정 파일을 함께 받을 수 있어 로그 경로 한 줄만
+수정하면 된다. 설정 절차는 `docs/operations/log-ingestion-setup.md` 참고.
 
 ### Kafka 분배 모드
 
@@ -387,7 +437,7 @@ docker exec -it pingbell-kafka /opt/kafka/bin/kafka-console-consumer.sh --bootst
 docker exec -it pingbell-kafka /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic pingbell.notification.requested.dlq --from-beginning --property print.headers=true
 ```
 
-DLQ 메시지는 페이로드만 보고 바로 재처리하지 않는다. `docs/dlq-reprocessing-policy.md`의 재처리 가능·폐기 기준에 따라 현재 DB 상태를 다시 확인한 뒤 판단한다. 현재 단계에서는 운영자용 단건 사전 점검, 단건 재처리, 목록 조회, 일괄 사전 점검 명령을 제공하며, 일괄 재처리와 DLQ 운영 UI/API는 제공하지 않는다.
+DLQ 메시지는 페이로드만 보고 바로 재처리하지 않는다. `docs/dlq/README.md`의 재처리 가능·폐기 기준에 따라 현재 DB 상태를 다시 확인한 뒤 판단한다. 현재 단계에서는 운영자용 단건 사전 점검, 단건 재처리, 목록 조회, 일괄 사전 점검 명령을 제공하며, 일괄 재처리와 DLQ 운영 UI/API는 제공하지 않는다.
 
 수동 확인:
 
@@ -407,7 +457,13 @@ HealthCheckRequested
 -> 알림 발송 / NotificationHistory 저장
 ```
 
-### 3. 백엔드 실행
+### 3. 백엔드를 Docker 없이 로컬에서 직접 실행 (선택)
+
+2번에서 이미 `docker compose up -d`로 앱까지 실행했다면 이 단계는 필요 없다. 소스를
+빠르게 반복 수정하며 재빌드 없이 실행하고 싶을 때만 사용하고, 이 경우 `docker compose stop app`
+등으로 compose의 `app` 컨테이너와 포트 충돌을 피한다. `.env`의 `POSTGRES_HOST=127.0.0.1` 등
+host 값을 그대로 사용하므로 인프라 컨테이너(`docker compose up -d postgres redis kafka mailpit`)는
+계속 떠 있어야 한다.
 
 Windows PowerShell 환경:
 
@@ -442,6 +498,11 @@ http://localhost:5173
 ```
 
 Vite 개발 서버는 `/api`, `/actuator` 요청을 백엔드 `http://localhost:8080`으로 프록시한다.
+
+> Frontend는 `docs/planning/frontend-implementation-issues.md`의 Issue 단위(F1~F6)로 다시
+> 만드는 중이다. 현재 로그인/회원가입/레이아웃(F1)만 실제로 동작하고, 대시보드/모니터/장애/알림
+> 채널/로그 분석/API Key 관리 화면은 아직 "곧 제공됩니다" placeholder다. 아래 수동 E2E 절차와
+> "주요 API" 표는 전체 기능이 완성된 상태를 기준으로 적혀 있어 지금 화면과는 차이가 있다.
 
 ## Mailpit 사용법
 

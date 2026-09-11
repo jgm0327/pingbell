@@ -3,7 +3,7 @@ services:
     image: pgvector/pgvector:0.8.2-pg16
     container_name: pingbell-postgres
     ports:
-      - "${POSTGRES_PORT}:5432"
+      - "5432"
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
@@ -30,7 +30,7 @@ services:
     image: redis:7.4-alpine
     container_name: pingbell-redis
     ports:
-      - "${REDIS_PORT:-6379}:6379"
+      - "6379"
     command: ["redis-server", "--appendonly", "yes"]
     volumes:
       - redis-data:/data
@@ -50,17 +50,96 @@ services:
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
-      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:${KAFKA_PORT:-9092}
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT
+      # Two listeners: INTERNAL is how the app container (or any other container on this compose
+      # network) reaches Kafka by service name; EXTERNAL is the host-mapped port used by tools
+      # running directly on the host (local `bootRun`, gradle tests, kafka CLI, etc.).
+      KAFKA_LISTENERS: INTERNAL://:29092,EXTERNAL://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:29092,EXTERNAL://localhost:${KAFKA_PORT:-9092}
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
     restart: unless-stopped
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: pingbell-app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+      mailpit:
+        condition: service_started
+    ports:
+      - "${APP_PORT:-8080}:8080"
+    environment:
+      TZ: Asia/Seoul
+      # Host names are the in-network service names, not the host-mapped ports/hosts used by
+      # anything running outside this compose network.
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      MAIL_HOST: mailpit
+      MAIL_PORT: 1025
+      MAIL_USERNAME: ${MAIL_USERNAME:-}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      MAIL_SMTP_AUTH: ${MAIL_SMTP_AUTH:-false}
+      MAIL_SMTP_STARTTLS_ENABLE: ${MAIL_SMTP_STARTTLS_ENABLE:-false}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_REFRESH_TOKEN_EXPIRATION_MS: ${JWT_REFRESH_TOKEN_EXPIRATION_MS:-1209600000}
+      JWT_REMEMBER_ME_REFRESH_TOKEN_EXPIRATION_MS: ${JWT_REMEMBER_ME_REFRESH_TOKEN_EXPIRATION_MS:-2592000000}
+      NOTIFICATION_TARGET_ENCRYPTION_KEY: ${NOTIFICATION_TARGET_ENCRYPTION_KEY}
+      PINGBELL_CHECK_DISPATCH_MODE: ${PINGBELL_CHECK_DISPATCH_MODE:-kafka}
+      LOG_ANALYSIS_AI_API_KEY: ${LOG_ANALYSIS_AI_API_KEY:-}
+      LOG_ANALYSIS_AI_BASE_URL: ${LOG_ANALYSIS_AI_BASE_URL:-https://api.openai.com/v1/}
+      LOG_ANALYSIS_AI_MODEL: ${LOG_ANALYSIS_AI_MODEL:-}
+      LOG_ANALYSIS_AI_TIMEOUT_SECONDS: ${LOG_ANALYSIS_AI_TIMEOUT_SECONDS:-30}
+    restart: unless-stopped
+
+  # Optional: not part of the app's dependency graph. Nothing depends on it and it does not
+  # start with a bare `docker compose up -d` unless you name it explicitly:
+  #   docker compose up -d mock-server
+  # Register its URL as a Monitor to test the health-check/incident flow without a real target.
+  # From inside this compose network (e.g. if you add a dependency on it later) it is reachable
+  # at `http://mock-server:4000`; from the host it's `http://localhost:${MOCK_SERVER_PORT:-4100}`.
+  mock-server:
+    build:
+      context: ./mock-server
+      dockerfile: Dockerfile
+    container_name: pingbell-mock-server
+    ports:
+      - "${MOCK_SERVER_PORT:-4100}:4000"
+    restart: unless-stopped
+
+  # Optional, local-only manual verification harness for the log ingestion feature (see
+  # docs/ai/log-ingestion-implementation-issues.md) - not part of the app's dependency graph, and
+  # `fluent-bit-test/` (gitignored) must exist with a real fluent-bit.conf + sample-app.log before
+  # this can start:
+  #   docker compose up -d fluent-bit-test
+  # Ships whatever gets appended to fluent-bit-test/sample-app.log to this Monitor's real ingestion
+  # endpoint over the compose network, exactly like a real deployment would.
+  fluent-bit-test:
+    image: fluent/fluent-bit:3.1
+    container_name: pingbell-fluent-bit-test
+    volumes:
+      - ./fluent-bit-test/fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf:ro
+      - ./fluent-bit-test/sample-app.log:/var/log/sample-app.log:ro
+    restart: "no"
 
 volumes:
   postgres-data:
